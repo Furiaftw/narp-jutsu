@@ -439,7 +439,9 @@ function App() {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <div className="text-xs font-bold text-slate-400 uppercase">{filteredJutsus.length} Results Found</div>
-            <button onClick={handleForceRefresh} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors"><RefreshCw size={12} /> Refresh</button>
+            {currentUser?.role === 'admin' && (
+  <button onClick={handleForceRefresh} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors"><RefreshCw size={12} /> Refresh</button>
+)}
           </div>
 
           {dataError && (
