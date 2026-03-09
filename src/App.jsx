@@ -172,7 +172,7 @@ function App() {
 
   // --- Derived from bloodlines ---
   const CLAN_CATEGORIES = useMemo(() => Object.keys(bloodlines), [bloodlines]);
-  const ALL_FACTIONS = useMemo(() => Object.values(bloodlines).flat(), [bloodlines]);
+  const ALL_FACTIONS = useMemo(() => factions, [factions]);
   const SPECIALIZATIONS = useMemo(() => {
     const specs = new Set(jutsus.map(j => j.spec).filter(Boolean));
     return [...specs].sort();
