@@ -1,0 +1,162 @@
+ :root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-card: #1a1a2e;
+  --border: #2a2a3e;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0b0;
+  --accent: #e63946;
+
+  --rank-e: #4a9eff;
+  --rank-d: #4aff4a;
+  --rank-c: #ffff4a;
+  --rank-b: #ff944a;
+  --rank-a: #ff4a4a;
+  --rank-s: #ff4aff;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* Loading & Error */
+.loading, .error {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 1.5rem;
+}
+
+.error { color: var(--rank-a); }
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 2rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.header h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.header p {
+  color: var(--text-secondary);
+}
+
+/* Jutsu Grid */
+.jutsu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Jutsu Card */
+.jutsu-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border-left: 4px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.jutsu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Rank border colors */
+.jutsu-card.rank-e { border-left-color: var(--rank-e); }
+.jutsu-card.rank-d { border-left-color: var(--rank-d); }
+.jutsu-card.rank-c { border-left-color: var(--rank-c); }
+.jutsu-card.rank-b { border-left-color: var(--rank-b); }
+.jutsu-card.rank-a { border-left-color: var(--rank-a); }
+.jutsu-card.rank-s { border-left-color: var(--rank-s); }
+
+/* Card header */
+.jutsu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  gap: 0.5rem;
+}
+
+.jutsu-header h3 {
+  font-size: 1.1rem;
+  flex: 1;
+}
+
+/* Rank badge */
+.rank-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  white-space: nowrap;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.rank-badge-e { color: var(--rank-e); border-color: var(--rank-e); }
+.rank-badge-d { color: var(--rank-d); border-color: var(--rank-d); }
+.rank-badge-c { color: var(--rank-c); border-color: var(--rank-c); }
+.rank-badge-b { color: var(--rank-b); border-color: var(--rank-b); }
+.rank-badge-a { color: var(--rank-a); border-color: var(--rank-a); }
+.rank-badge-s { color: var(--rank-s); border-color: var(--rank-s); }
+
+/* Card details */
+.jutsu-details p {
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+  color: var(--text-secondary);
+}
+
+.jutsu-details strong {
+  color: var(--text-primary);
+}
+
+/* Conditions warning */
+.jutsu-conditions {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(230, 57, 70, 0.1);
+  border: 1px solid rgba(230, 57, 70, 0.2);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--rank-a);
+}
+
+/* Doc link */
+.doc-link {
+  display: inline-block;
+  margin-top: 0.75rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.doc-link:hover {
+  text-decoration: underline;
+}
