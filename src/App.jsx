@@ -45,7 +45,7 @@ const RefreshCw = (p) => <Icon {...p} path={<><polyline points="23 4 23 10 17 10
 // ============================================================
 // STATIC CONSTANTS
 // ============================================================
-const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Medical Ninjutsu", "Sound", "Yang", "Yin", "Ninjutsu", "Kenjutsu", "Fuinjutsu", "Sensory Techniques", "Genjutsu", "Defensive Techniques"];
+const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Medical Ninjutsu", "Sound", "Yang", "Yin"];
 const JUTSU_TYPES = ["1-Post", "Continuous", "Multi-Post", "Hybrid"];
 const ORIGIN = ["Canon", "Custom"];
 
@@ -60,12 +60,6 @@ const getNatureColor = (nature) => {
     "Sound": "bg-fuchsia-200 text-fuchsia-900 border-fuchsia-300",
     "Yang": "bg-amber-100 text-amber-900 border-amber-300",
     "Yin": "bg-purple-100 text-purple-900 border-purple-300",
-    "Ninjutsu": "bg-slate-200 text-slate-800 border-slate-300",
-    "Kenjutsu": "bg-rose-100 text-rose-800 border-rose-200",
-    "Fuinjutsu": "bg-teal-100 text-teal-800 border-teal-200",
-    "Sensory Techniques": "bg-pink-100 text-pink-800 border-pink-200",
-    "Genjutsu": "bg-indigo-100 text-indigo-800 border-indigo-200",
-    "Defensive Techniques": "bg-stone-200 text-stone-800 border-stone-300",
   };
   return colors[nature] || "bg-slate-200 text-slate-800 border-slate-300";
 };
@@ -113,7 +107,7 @@ async function fetchSheetData() {
       cost: row['Cost'] || '',
       types: (row['Jutsu Types'] || '').split(',').map(t => t.trim()).filter(Boolean),
       origin: row['Origin'] || '',
-      spec: row['Specialization'] || '',
+      spec: (row['Specialization'] || '').split(',').map(s => s.trim()).filter(Boolean),
       link: row['Doc Link'] || '',
       clanCat: deriveClanCategory(bloodlineName, bloodlines),
       clanName: bloodlineName || 'None',
@@ -174,7 +168,7 @@ function App() {
   const CLAN_CATEGORIES = useMemo(() => Object.keys(bloodlines), [bloodlines]);
   const ALL_FACTIONS = useMemo(() => factions, [factions]);
   const SPECIALIZATIONS = useMemo(() => {
-    const specs = new Set(jutsus.map(j => j.spec).filter(Boolean));
+    const specs = new Set(jutsus.flatMap(j => j.spec));
     return [...specs].sort();
   }, [jutsus]);
 
@@ -350,7 +344,7 @@ function App() {
       const matchSearch = j.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchNature = fNature === 'Any' || j.nature === fNature;
       const matchOrigin = fOrigin === 'Any' || j.origin === fOrigin;
-      const matchSpec = fSpec === 'Any' || j.spec === fSpec;
+      const matchSpec = fSpec === 'Any' || j.spec.includes(fSpec);
       const matchType = fType === 'Any' || j.types.includes(fType);
       let matchClan = true;
       if (fClanCat !== 'Any') matchClan = j.clanCat === fClanCat && (fClanName === 'Any' || j.clanName === fClanName);
@@ -440,8 +434,8 @@ function App() {
           <div className="flex items-center justify-between mb-4">
             <div className="text-xs font-bold text-slate-400 uppercase">{filteredJutsus.length} Results Found</div>
             {currentUser?.role === 'admin' && (
-  <button onClick={handleForceRefresh} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors"><RefreshCw size={12} /> Refresh</button>
-)}
+              <button onClick={handleForceRefresh} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors"><RefreshCw size={12} /> Refresh</button>
+            )}
           </div>
 
           {dataError && (
@@ -462,7 +456,7 @@ function App() {
                     {j.secret && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border-purple-200">SECRET</span>}
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-4">
-                    <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{j.spec}</span>
+                    {j.spec.map(s => <span key={s} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{s}</span>)}
                     {j.types.map(t => <span key={t} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{t}</span>)}
                     {j.mustLearnIC && <span className="text-xs font-medium px-2 py-1 rounded border bg-slate-700 text-white border-slate-800">Must Learn IC</span>}
                     {j.clanCat !== 'None' && j.clanName !== 'None' && j.clanName && <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200 flex items-center gap-1"><TagIcon size={12} /> {j.clanName} ({j.clanCat})</span>}
