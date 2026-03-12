@@ -14,7 +14,7 @@ import {
 // ============================================================
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJepmT3RAyAHb3NMe2z67iQn8UHr8HJXQgLfn0HJg0dzKUfth6TEajvpgAgu5cWbVctg/exec';
 const CACHE_KEY = 'narp_jutsu_cache';
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const CACHE_TTL = 60 * 60 * 1000;
 
 // ============================================================
 // ICONS
@@ -63,6 +63,15 @@ const getNatureColor = (nature) => {
   };
   return colors[nature] || "bg-slate-200 text-slate-800 border-slate-300";
 };
+
+// ============================================================
+// HELPERS
+// ============================================================
+function toArray(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string' && val.trim() !== '') return [val];
+  return [];
+}
 
 // ============================================================
 // DATA FETCHING
@@ -128,22 +137,18 @@ async function fetchSheetData() {
 // MAIN APP
 // ============================================================
 function App() {
-  // --- Data State ---
   const [jutsus, setJutsus] = useState([]);
   const [bloodlines, setBloodlines] = useState({});
   const [factions, setFactions] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
 
-  // --- Auth State ---
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [allUsers, setAllUsers] = useState([]);
 
-  // --- View State ---
   const [view, setView] = useState('browser');
 
-  // --- Filter State ---
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
@@ -156,7 +161,6 @@ function App() {
   const [fLimited, setFLimited] = useState(false);
   const [fActiveSecrets, setFActiveSecrets] = useState([]);
 
-  // --- Login State ---
   const [loginTab, setLoginTab] = useState('faction');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
@@ -164,19 +168,13 @@ function App() {
   const [isRequesting, setIsRequesting] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // --- Derived from bloodlines ---
   const CLAN_CATEGORIES = useMemo(() => Object.keys(bloodlines), [bloodlines]);
   const ALL_FACTIONS = useMemo(() => factions, [factions]);
   const SPECIALIZATIONS = useMemo(() => {
-    const specs = new Set(jutsus.flatMap(j => j.spec));
+    const specs = new Set(jutsus.flatMap(j => toArray(j.spec)));
     return [...specs].sort();
   }, [jutsus]);
 
-  // =====================================================
-  // EFFECTS
-  // =====================================================
-
-  // Fetch sheet data
   useEffect(() => {
     fetchSheetData()
       .then(data => {
@@ -192,7 +190,6 @@ function App() {
       });
   }, []);
 
-  // Firebase Auth listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -215,7 +212,6 @@ function App() {
     return () => unsub();
   }, []);
 
-  // Admin: real-time user list
   useEffect(() => {
     if (currentUser?.role !== 'admin') { setAllUsers([]); return; }
     const unsub = onSnapshot(collection(db, 'users'),
@@ -224,10 +220,6 @@ function App() {
     );
     return () => unsub();
   }, [currentUser?.role]);
-
-  // =====================================================
-  // HANDLERS
-  // =====================================================
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -333,18 +325,16 @@ function App() {
     setDataLoading(false);
   };
 
-  // =====================================================
-  // FILTERED DATA
-  // =====================================================
   const filteredJutsus = useMemo(() => {
     return jutsus.filter(j => {
       if (j.secret) {
         if (!j.secretFactions || !j.secretFactions.some(f => fActiveSecrets.includes(f))) return false;
       }
+      const specArr = toArray(j.spec);
       const matchSearch = j.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchNature = fNature === 'Any' || j.nature === fNature;
       const matchOrigin = fOrigin === 'Any' || j.origin === fOrigin;
-      const matchSpec = fSpec === 'Any' || j.spec.includes(fSpec);
+      const matchSpec = fSpec === 'Any' || specArr.includes(fSpec);
       const matchType = fType === 'Any' || j.types.includes(fType);
       let matchClan = true;
       if (fClanCat !== 'Any') matchClan = j.clanCat === fClanCat && (fClanName === 'Any' || j.clanName === fClanName);
@@ -353,9 +343,6 @@ function App() {
     });
   }, [jutsus, searchTerm, fNature, fOrigin, fSpec, fType, fClanCat, fClanName, fLimited, fActiveSecrets]);
 
-  // =====================================================
-  // LOADING
-  // =====================================================
   if (authLoading || dataLoading) {
     return (
       <div className="w-full h-screen bg-slate-900 flex flex-col items-center justify-center gap-4">
@@ -366,9 +353,6 @@ function App() {
     );
   }
 
-  // =====================================================
-  // RENDER: BROWSER
-  // =====================================================
   const renderBrowser = () => (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       <div className="bg-slate-900 text-white p-4 shadow-md z-10 shrink-0">
@@ -445,7 +429,9 @@ function App() {
           )}
 
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredJutsus.map(j => (
+            {filteredJutsus.map(j => {
+              const specArr = toArray(j.spec);
+              return (
               <div key={j._id} className={`bg-white rounded-2xl shadow-sm border flex flex-col overflow-hidden hover:shadow-md transition-shadow ${j.secret ? 'border-purple-300 shadow-purple-100' : 'border-slate-200'}`}>
                 <div className={`p-4 pb-0 flex-1 ${j.secret ? 'bg-purple-50/30' : ''}`}>
                   <div className="flex justify-between items-start mb-2"><h2 className="text-xl font-bold leading-tight flex items-center gap-2">{j.secret && <Lock size={16} className="text-purple-600 shrink-0" />} {j.name}</h2></div>
@@ -456,7 +442,7 @@ function App() {
                     {j.secret && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border-purple-200">SECRET</span>}
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-4">
-                    {j.spec.map(s => <span key={s} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{s}</span>)}
+                    {specArr.map(s => <span key={s} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{s}</span>)}
                     {j.types.map(t => <span key={t} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{t}</span>)}
                     {j.mustLearnIC && <span className="text-xs font-medium px-2 py-1 rounded border bg-slate-700 text-white border-slate-800">Must Learn IC</span>}
                     {j.clanCat !== 'None' && j.clanName !== 'None' && j.clanName && <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200 flex items-center gap-1"><TagIcon size={12} /> {j.clanName} ({j.clanCat})</span>}
@@ -479,7 +465,8 @@ function App() {
                   {j.link && j.link !== 'Link' && <button onClick={() => handleCopyLink(j.link, j._id)} className={`p-2.5 rounded-xl flex items-center justify-center min-w-[50px] transition-all border ${copiedId === j._id ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>{copiedId === j._id ? <Check size={18} /> : <Copy size={18} />}</button>}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {filteredJutsus.length === 0 && (
@@ -493,9 +480,6 @@ function App() {
     </div>
   );
 
-  // =====================================================
-  // RENDER: LOGIN
-  // =====================================================
   const renderLogin = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-100 overflow-y-auto">
       <div className="bg-white p-8 rounded-3xl shadow-xl border w-full max-w-sm">
@@ -523,9 +507,6 @@ function App() {
     </div>
   );
 
-  // =====================================================
-  // RENDER: ADMIN DASHBOARD
-  // =====================================================
   const renderAdminDashboard = () => {
     const pendingUsers = allUsers.filter(u => u.status === 'pending');
     const approvedUsers = allUsers.filter(u => u.status === 'approved' && u.uid !== currentUser?.uid);
@@ -607,9 +588,6 @@ function App() {
     );
   };
 
-  // =====================================================
-  // MAIN LAYOUT
-  // =====================================================
   return (
     <div className="w-full h-screen bg-slate-200 flex flex-col font-sans text-slate-900 overflow-hidden">
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-30 flex justify-between items-center shadow-lg shrink-0">
