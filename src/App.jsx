@@ -456,7 +456,7 @@ function App() {
                 <div className={`p-4 pb-0 flex-1 ${j.secret ? 'bg-purple-50/30' : ''}`}>
                   <div className="flex justify-between items-start mb-2"><h2 className="text-xl font-bold leading-tight flex items-center gap-2">{j.secret && <Lock size={16} className="text-purple-600 shrink-0" />} {j.name}</h2></div>
                   <div className="flex flex-wrap gap-2 mb-4">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getNatureColor(j.nature)}`}>{j.nature}</span>
+                    {j.nature && <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getNatureColor(j.nature)}`}>{j.nature}</span>}
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${j.origin === 'Canon' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-cyan-50 text-cyan-700 border-cyan-200'}`}>{j.origin}</span>
                     {j.limited && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-100 text-rose-800 border-rose-200 flex items-center gap-1"><AlertCircle size={10} /> Limited</span>}
                     {j.secret && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border-purple-200">SECRET</span>}
