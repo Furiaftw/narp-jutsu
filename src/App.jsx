@@ -113,7 +113,7 @@ async function fetchSheetData() {
       cost: row['Cost'] || '',
       types: (row['Jutsu Types'] || '').split(',').map(t => t.trim()).filter(Boolean),
       origin: row['Origin'] || '',
-      spec: row['Specialization'] || '',
+      spec: (row['Specialization'] || '').split(',').map(s => s.trim()).filter(Boolean),
       link: row['Doc Link'] || '',
       clanCat: deriveClanCategory(bloodlineName, bloodlines),
       clanName: bloodlineName || 'None',
@@ -174,7 +174,7 @@ function App() {
   const CLAN_CATEGORIES = useMemo(() => Object.keys(bloodlines), [bloodlines]);
   const ALL_FACTIONS = useMemo(() => factions, [factions]);
   const SPECIALIZATIONS = useMemo(() => {
-    const specs = new Set(jutsus.map(j => j.spec).filter(Boolean));
+    const specs = new Set(jutsus.flatMap(j => j.spec));
     return [...specs].sort();
   }, [jutsus]);
 
@@ -350,7 +350,7 @@ function App() {
       const matchSearch = j.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchNature = fNature === 'Any' || j.nature === fNature;
       const matchOrigin = fOrigin === 'Any' || j.origin === fOrigin;
-      const matchSpec = fSpec === 'Any' || j.spec === fSpec;
+      const matchSpec = fSpec === 'Any' || j.spec.includes(fSpec);
       const matchType = fType === 'Any' || j.types.includes(fType);
       let matchClan = true;
       if (fClanCat !== 'Any') matchClan = j.clanCat === fClanCat && (fClanName === 'Any' || j.clanName === fClanName);
@@ -462,7 +462,7 @@ function App() {
                     {j.secret && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border-purple-200">SECRET</span>}
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-4">
-                    <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{j.spec}</span>
+                    {j.spec.map(s => <span key={s} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{s}</span>)}
                     {j.types.map(t => <span key={t} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{t}</span>)}
                     {j.mustLearnIC && <span className="text-xs font-medium px-2 py-1 rounded border bg-slate-700 text-white border-slate-800">Must Learn IC</span>}
                     {j.clanCat !== 'None' && j.clanName !== 'None' && j.clanName && <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200 flex items-center gap-1"><TagIcon size={12} /> {j.clanName} ({j.clanCat})</span>}
