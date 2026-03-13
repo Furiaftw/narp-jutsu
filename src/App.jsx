@@ -328,10 +328,18 @@ function App() {
   };
 
   const filteredJutsus = useMemo(() => {
+    const secretModeActive = fActiveSecrets.length > 0;
+
     return jutsus.filter(j => {
-      if (j.secret) {
+      // SECRET MODE: if any faction filter is active, ONLY show secrets for those factions
+      if (secretModeActive) {
+        if (!j.secret) return false;
         if (!j.secretFactions || !j.secretFactions.some(f => fActiveSecrets.includes(f))) return false;
+      } else {
+        // Normal mode: hide all secrets
+        if (j.secret) return false;
       }
+
       const specArr = toArray(j.spec);
       const rankArr = toArray(j.rank);
       const matchSearch = j.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -407,7 +415,7 @@ function App() {
                     <div className="w-px h-5 bg-slate-300 hidden md:block"></div>
                     {currentUser.allowedFactions.map(faction => (
                       <label key={faction} className={`flex items-center gap-2 text-sm font-bold cursor-pointer transition-colors ${fActiveSecrets.includes(faction) ? 'text-purple-700' : 'text-slate-500'}`}>
-                        <input type="checkbox" checked={fActiveSecrets.includes(faction)} onChange={(e) => { if (e.target.checked) setFActiveSecrets([...fActiveSecrets, faction]); else setFActiveSecrets(fActiveSecrets.filter(f => f !== faction)); }} className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4" /> Reveal {faction} Secrets
+                        <input type="checkbox" checked={fActiveSecrets.includes(faction)} onChange={(e) => { if (e.target.checked) setFActiveSecrets([...fActiveSecrets, faction]); else setFActiveSecrets(fActiveSecrets.filter(f => f !== faction)); }} className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4" /> {faction} Secrets
                       </label>
                     ))}
                   </>
@@ -421,7 +429,10 @@ function App() {
       <div className="flex-1 overflow-y-auto p-4 bg-slate-100 pb-10">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-4">
-            <div className="text-xs font-bold text-slate-400 uppercase">{filteredJutsus.length} Results Found</div>
+            <div className="flex items-center gap-3">
+              <div className="text-xs font-bold text-slate-400 uppercase">{filteredJutsus.length} Results Found</div>
+              {fActiveSecrets.length > 0 && <span className="text-[10px] font-bold text-purple-600 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded-full uppercase">Secret Mode</span>}
+            </div>
             {currentUser?.role === 'admin' && (
               <button onClick={handleForceRefresh} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors"><RefreshCw size={12} /> Refresh</button>
             )}
