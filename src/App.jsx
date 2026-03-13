@@ -12,10 +12,10 @@ import {
 // ============================================================
 // CONFIG
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzxcu0-HXSRfv6TyaHmakrLKdqUW-JEMCH4ff4QfPHemJQ86cTkEy_hWz5cJ7JCZZYYeg/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwtenwxf4oiShSKDlt0hmhCuWdY3eg3eLVMY0irQVwAx29eRZ6Ii5YdO4u1S1BGCPqMGg/exec';
 const CACHE_KEY = 'narp_jutsu_cache';
 const CACHE_TTL = 60 * 60 * 1000;
-const APP_VERSION = 'v2.3';
+const APP_VERSION = 'v2.4';
 
 // ============================================================
 // ICONS
@@ -556,7 +556,11 @@ function App() {
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {filteredClans.map((clan, idx) => (
               <div key={`${clan.name}-${idx}`} className={`rounded-xl border p-4 flex items-center justify-between transition-shadow hover:shadow-md ${clan.available ? 'bg-white border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                <span className={`font-bold text-sm ${clan.available ? 'text-slate-800' : 'text-slate-400'}`}>{clan.name}</span>
+                {clan.link ? (
+                  <a href={clan.link} target="_blank" rel="noopener noreferrer" className={`font-bold text-sm underline decoration-1 underline-offset-2 transition-colors ${clan.available ? 'text-indigo-700 hover:text-indigo-900' : 'text-slate-400 hover:text-slate-600'}`}>{clan.name}</a>
+                ) : (
+                  <span className={`font-bold text-sm ${clan.available ? 'text-slate-800' : 'text-slate-400'}`}>{clan.name}</span>
+                )}
                 {clan.available ? (
                   <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-3 py-1 rounded-full">
                     <CheckCircle size={14} /> Open
