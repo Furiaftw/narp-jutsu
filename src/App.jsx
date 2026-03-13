@@ -12,9 +12,10 @@ import {
 // ============================================================
 // CONFIG
 // ============================================================
-const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL;
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzxcu0-HXSRfv6TyaHmakrLKdqUW-JEMCH4ff4QfPHemJQ86cTkEy_hWz5cJ7JCZZYYeg/exec';
 const CACHE_KEY = 'narp_jutsu_cache';
 const CACHE_TTL = 60 * 60 * 1000;
+const APP_VERSION = 'v2.2';
 
 // ============================================================
 // ICONS
@@ -41,6 +42,7 @@ const UsersIcon = (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6
 const XCircle = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10" /><line x1="15" x2="9" y1="9" y2="15" /><line x1="9" x2="15" y1="9" y2="15" /></>} />;
 const Clock = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>} />;
 const RefreshCw = (p) => <Icon {...p} path={<><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></>} />;
+const UserCheck = (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><polyline points="16 11 18 13 22 9" /></>} />;
 
 // ============================================================
 // STATIC CONSTANTS
@@ -101,6 +103,7 @@ async function fetchSheetData() {
 
   const bloodlines = json.bloodlines || {};
   const factions = json.factions || [];
+  const clanSlots = json.clanSlots || [];
 
   const jutsus = (json.jutsus || []).map((row, idx) => {
     const rankArr = (row['Rank'] || '').split(',').map(r => r.trim()).filter(Boolean);
@@ -129,7 +132,7 @@ async function fetchSheetData() {
     };
   });
 
-  const result = { jutsus, bloodlines, factions, ts: Date.now() };
+  const result = { jutsus, bloodlines, factions, clanSlots, ts: Date.now() };
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch (e) { }
   return result;
 }
@@ -141,6 +144,7 @@ function App() {
   const [jutsus, setJutsus] = useState([]);
   const [bloodlines, setBloodlines] = useState({});
   const [factions, setFactions] = useState([]);
+  const [clanSlots, setClanSlots] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
 
@@ -163,6 +167,8 @@ function App() {
   const [fLimited, setFLimited] = useState(false);
   const [fActiveSecrets, setFActiveSecrets] = useState([]);
 
+  const [clanSearch, setClanSearch] = useState('');
+
   const [loginTab, setLoginTab] = useState('faction');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
@@ -177,12 +183,24 @@ function App() {
     return [...specs].sort();
   }, [jutsus]);
 
+  const visibleFactions = useMemo(() => {
+    if (!currentUser) return [];
+    if (currentUser.role === 'admin') return ALL_FACTIONS;
+    return currentUser.allowedFactions || [];
+  }, [currentUser, ALL_FACTIONS]);
+
+  const filteredClans = useMemo(() => {
+    if (!clanSearch.trim()) return clanSlots;
+    return clanSlots.filter(c => c.name.toLowerCase().includes(clanSearch.toLowerCase()));
+  }, [clanSlots, clanSearch]);
+
   useEffect(() => {
     fetchSheetData()
       .then(data => {
         setJutsus(data.jutsus);
         setBloodlines(data.bloodlines);
         setFactions(data.factions);
+        setClanSlots(data.clanSlots || []);
         setDataLoading(false);
       })
       .catch(err => {
@@ -322,6 +340,7 @@ function App() {
       setJutsus(data.jutsus);
       setBloodlines(data.bloodlines);
       setFactions(data.factions);
+      setClanSlots(data.clanSlots || []);
       setDataError(null);
     } catch (err) { setDataError(err.message); }
     setDataLoading(false);
@@ -331,12 +350,10 @@ function App() {
     const secretModeActive = fActiveSecrets.length > 0;
 
     return jutsus.filter(j => {
-      // SECRET MODE: if any faction filter is active, ONLY show secrets for those factions
       if (secretModeActive) {
         if (!j.secret) return false;
         if (!j.secretFactions || !j.secretFactions.some(f => fActiveSecrets.includes(f))) return false;
       } else {
-        // Normal mode: hide all secrets
         if (j.secret) return false;
       }
 
@@ -365,6 +382,9 @@ function App() {
     );
   }
 
+  // =====================================================
+  // RENDER: JUTSU BROWSER
+  // =====================================================
   const renderBrowser = () => (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       <div className="bg-slate-900 text-white p-4 shadow-md z-10 shrink-0">
@@ -410,10 +430,10 @@ function App() {
             <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
               <div className="flex flex-wrap items-center gap-6">
                 <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer"><input type="checkbox" checked={fLimited} onChange={e => setFLimited(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" /> Limited Only</label>
-                {currentUser?.allowedFactions?.length > 0 && (
+                {visibleFactions.length > 0 && (
                   <>
                     <div className="w-px h-5 bg-slate-300 hidden md:block"></div>
-                    {currentUser.allowedFactions.map(faction => (
+                    {visibleFactions.map(faction => (
                       <label key={faction} className={`flex items-center gap-2 text-sm font-bold cursor-pointer transition-colors ${fActiveSecrets.includes(faction) ? 'text-purple-700' : 'text-slate-500'}`}>
                         <input type="checkbox" checked={fActiveSecrets.includes(faction)} onChange={(e) => { if (e.target.checked) setFActiveSecrets([...fActiveSecrets, faction]); else setFActiveSecrets(fActiveSecrets.filter(f => f !== faction)); }} className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4" /> {faction} Secrets
                       </label>
@@ -431,7 +451,7 @@ function App() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="text-xs font-bold text-slate-400 uppercase">{filteredJutsus.length} Results Found</div>
-              {fActiveSecrets.length > 0 && <span className="text-[10px] font-bold text-purple-600 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded-full uppercase">Secret Mode</span>}
+              {fActiveSecrets.length > 0 && <span className="text-[10px] font-bold text-purple-600 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded-full uppercase">Secret Mode: {fActiveSecrets.join(', ')}</span>}
             </div>
             {currentUser?.role === 'admin' && (
               <button onClick={handleForceRefresh} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors"><RefreshCw size={12} /> Refresh</button>
@@ -497,6 +517,79 @@ function App() {
     </div>
   );
 
+  // =====================================================
+  // RENDER: CLAN SLOTS
+  // =====================================================
+  const renderClanSlots = () => {
+    const availableCount = clanSlots.filter(c => c.available).length;
+    const unavailableCount = clanSlots.filter(c => !c.available).length;
+
+    return (
+      <div className="flex-1 overflow-y-auto bg-slate-100 pb-10">
+        <div className="bg-slate-900 text-white p-6 shadow-md">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center gap-3 mb-4">
+              <UserCheck size={28} className="text-indigo-400" />
+              <div>
+                <h2 className="text-2xl font-bold">Clan Availability</h2>
+                <p className="text-sm text-slate-400 mt-0.5">Check which clans have open slots.</p>
+              </div>
+            </div>
+            <div className="flex gap-4 mb-4">
+              <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-xl px-4 py-2 flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
+                <span className="text-sm font-bold text-emerald-300">{availableCount} Open</span>
+              </div>
+              <div className="bg-red-500/20 border border-red-500/30 rounded-xl px-4 py-2 flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                <span className="text-sm font-bold text-red-300">{unavailableCount} Closed</span>
+              </div>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+              <input type="text" placeholder="Search clan name..." className="w-full bg-slate-800 text-white rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-indigo-500 text-sm" value={clanSearch} onChange={(e) => setClanSearch(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto p-4">
+          {currentUser?.role === 'admin' && (
+            <div className="flex justify-end mb-4">
+              <button onClick={handleForceRefresh} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors"><RefreshCw size={12} /> Refresh</button>
+            </div>
+          )}
+
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredClans.map((clan, idx) => (
+              <div key={`${clan.name}-${idx}`} className={`rounded-xl border p-4 flex items-center justify-between transition-shadow hover:shadow-md ${clan.available ? 'bg-white border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                <span className={`font-bold text-sm ${clan.available ? 'text-slate-800' : 'text-slate-400'}`}>{clan.name}</span>
+                {clan.available ? (
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-3 py-1 rounded-full">
+                    <CheckCircle size={14} /> Open
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-100 border border-red-200 px-3 py-1 rounded-full">
+                    <XCircle size={14} /> Closed
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {filteredClans.length === 0 && (
+            <div className="text-center py-16">
+              <AlertCircle size={40} className="text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500 font-semibold">No clans match your search.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // =====================================================
+  // RENDER: LOGIN
+  // =====================================================
   const renderLogin = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-100 overflow-y-auto">
       <div className="bg-white p-8 rounded-3xl shadow-xl border w-full max-w-sm">
@@ -524,6 +617,9 @@ function App() {
     </div>
   );
 
+  // =====================================================
+  // RENDER: ADMIN DASHBOARD
+  // =====================================================
   const renderAdminDashboard = () => {
     const pendingUsers = allUsers.filter(u => u.status === 'pending');
     const approvedUsers = allUsers.filter(u => u.status === 'approved' && u.uid !== currentUser?.uid);
@@ -605,38 +701,59 @@ function App() {
     );
   };
 
+  // =====================================================
+  // MAIN LAYOUT
+  // =====================================================
   return (
     <div className="w-full h-screen bg-slate-200 flex flex-col font-sans text-slate-900 overflow-hidden">
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-30 flex justify-between items-center shadow-lg shrink-0">
         <h1 className="text-lg font-bold tracking-widest uppercase flex items-center gap-2">
           {view === 'browser' && <BookOpen size={18} className="text-indigo-400" />}
+          {view === 'clan_slots' && <UserCheck size={18} className="text-emerald-400" />}
           {view === 'login' && <Key size={18} className="text-indigo-400" />}
           {view === 'admin_dashboard' && <UsersIcon size={18} className="text-emerald-400" />}
-          <span className="hidden sm:inline">{view === 'browser' ? 'NARP Database' : view === 'login' ? 'Auth Portal' : 'Admin Area'}</span>
-          <span className="sm:hidden">{view === 'browser' ? 'NARP' : view === 'login' ? 'Auth' : 'Admin'}</span>
+          <span className="hidden sm:inline">
+            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clan Slots' : view === 'login' ? 'Auth Portal' : 'Admin Area'}
+          </span>
+          <span className="sm:hidden">
+            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Clans' : view === 'login' ? 'Auth' : 'Admin'}
+          </span>
         </h1>
-        {currentUser ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 hidden md:inline mr-2">{currentUser.email}</span>
-            {currentUser.role === 'admin' && (
-              <>
-                <button onClick={() => setView('browser')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'browser' ? 'bg-indigo-900 text-indigo-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>Site</button>
-                <button onClick={() => setView('admin_dashboard')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'admin_dashboard' ? 'bg-indigo-900 text-indigo-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>Dashboard</button>
-              </>
-            )}
-            <button onClick={handleLogout} className="text-slate-400 hover:text-white p-1.5 ml-1 bg-slate-800 rounded-lg"><LogOut size={16} /></button>
-          </div>
-        ) : view === 'browser' && (
-          <button onClick={() => setView('login')} className="text-slate-300 hover:text-white flex items-center gap-1.5 text-xs font-bold bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg transition-colors hover:bg-slate-700"><Shield size={14} /> Login</button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Page nav buttons — always visible */}
+          <button onClick={() => setView('browser')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'browser' ? 'bg-indigo-900 text-indigo-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+            <span className="hidden sm:inline">Jutsu</span>
+            <span className="sm:hidden"><BookOpen size={14} /></span>
+          </button>
+          <button onClick={() => setView('clan_slots')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'clan_slots' ? 'bg-emerald-900 text-emerald-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+            <span className="hidden sm:inline">Clans</span>
+            <span className="sm:hidden"><UserCheck size={14} /></span>
+          </button>
+
+          {currentUser ? (
+            <>
+              <span className="text-xs text-slate-400 hidden lg:inline mx-1">{currentUser.email}</span>
+              {currentUser.role === 'admin' && (
+                <button onClick={() => setView('admin_dashboard')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'admin_dashboard' ? 'bg-indigo-900 text-indigo-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                  <span className="hidden sm:inline">Dashboard</span>
+                  <span className="sm:hidden"><UsersIcon size={14} /></span>
+                </button>
+              )}
+              <button onClick={handleLogout} className="text-slate-400 hover:text-white p-1.5 bg-slate-800 rounded-lg"><LogOut size={16} /></button>
+            </>
+          ) : (
+            <button onClick={() => setView('login')} className="text-slate-300 hover:text-white flex items-center gap-1.5 text-xs font-bold bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg transition-colors hover:bg-slate-700"><Shield size={14} /><span className="hidden sm:inline">Login</span></button>
+          )}
+        </div>
       </div>
 
       {view === 'browser' && renderBrowser()}
+      {view === 'clan_slots' && renderClanSlots()}
       {view === 'login' && renderLogin()}
       {view === 'admin_dashboard' && currentUser?.role === 'admin' && renderAdminDashboard()}
 
       <div className="bg-slate-900 text-center py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest z-20 shrink-0 border-t border-slate-800">
-        Credits: Hexagon & A Road Sign
+        Credits: Hexagon & A Road Sign — {APP_VERSION}
       </div>
     </div>
   );
