@@ -1,3 +1,7 @@
+<details>
+<summary>Full `src/App.jsx` — click to expand</summary>
+
+```jsx
 import { useState, useEffect, useMemo } from 'react';
 import {
   auth, db,
@@ -12,10 +16,10 @@ import {
 // ============================================================
 // CONFIG
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzxcu0-HXSRfv6TyaHmakrLKdqUW-JEMCH4ff4QfPHemJQ86cTkEy_hWz5cJ7JCZZYYeg/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJepmT3RAyAHb3NMe2z67iQn8UHr8HJXQgLfn0HJg0dzKUfth6TEajvpgAgu5cWbVctg/exec';
 const CACHE_KEY = 'narp_jutsu_cache';
 const CACHE_TTL = 60 * 60 * 1000;
-const APP_VERSION = 'v2.2';
+const APP_VERSION = 'v2.3';
 
 // ============================================================
 // ICONS
@@ -382,9 +386,6 @@ function App() {
     );
   }
 
-  // =====================================================
-  // RENDER: JUTSU BROWSER
-  // =====================================================
   const renderBrowser = () => (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       <div className="bg-slate-900 text-white p-4 shadow-md z-10 shrink-0">
@@ -517,9 +518,6 @@ function App() {
     </div>
   );
 
-  // =====================================================
-  // RENDER: CLAN SLOTS
-  // =====================================================
   const renderClanSlots = () => {
     const availableCount = clanSlots.filter(c => c.available).length;
     const unavailableCount = clanSlots.filter(c => !c.available).length;
@@ -531,8 +529,8 @@ function App() {
             <div className="flex items-center gap-3 mb-4">
               <UserCheck size={28} className="text-indigo-400" />
               <div>
-                <h2 className="text-2xl font-bold">Clan Availability</h2>
-                <p className="text-sm text-slate-400 mt-0.5">Check which clans have open slots.</p>
+                <h2 className="text-2xl font-bold">Clan & Limited Item Availability</h2>
+                <p className="text-sm text-slate-400 mt-0.5">Check which clans and limited items have open slots.</p>
               </div>
             </div>
             <div className="flex gap-4 mb-4">
@@ -547,7 +545,7 @@ function App() {
             </div>
             <div className="relative">
               <Search className="absolute left-3 top-3 text-slate-400" size={18} />
-              <input type="text" placeholder="Search clan name..." className="w-full bg-slate-800 text-white rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-indigo-500 text-sm" value={clanSearch} onChange={(e) => setClanSearch(e.target.value)} />
+              <input type="text" placeholder="Search clan or item name..." className="w-full bg-slate-800 text-white rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-indigo-500 text-sm" value={clanSearch} onChange={(e) => setClanSearch(e.target.value)} />
             </div>
           </div>
         </div>
@@ -579,7 +577,7 @@ function App() {
           {filteredClans.length === 0 && (
             <div className="text-center py-16">
               <AlertCircle size={40} className="text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500 font-semibold">No clans match your search.</p>
+              <p className="text-slate-500 font-semibold">No results match your search.</p>
             </div>
           )}
         </div>
@@ -587,9 +585,6 @@ function App() {
     );
   };
 
-  // =====================================================
-  // RENDER: LOGIN
-  // =====================================================
   const renderLogin = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-100 overflow-y-auto">
       <div className="bg-white p-8 rounded-3xl shadow-xl border w-full max-w-sm">
@@ -617,9 +612,6 @@ function App() {
     </div>
   );
 
-  // =====================================================
-  // RENDER: ADMIN DASHBOARD
-  // =====================================================
   const renderAdminDashboard = () => {
     const pendingUsers = allUsers.filter(u => u.status === 'pending');
     const approvedUsers = allUsers.filter(u => u.status === 'approved' && u.uid !== currentUser?.uid);
@@ -701,9 +693,6 @@ function App() {
     );
   };
 
-  // =====================================================
-  // MAIN LAYOUT
-  // =====================================================
   return (
     <div className="w-full h-screen bg-slate-200 flex flex-col font-sans text-slate-900 overflow-hidden">
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-30 flex justify-between items-center shadow-lg shrink-0">
@@ -713,20 +702,19 @@ function App() {
           {view === 'login' && <Key size={18} className="text-indigo-400" />}
           {view === 'admin_dashboard' && <UsersIcon size={18} className="text-emerald-400" />}
           <span className="hidden sm:inline">
-            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clan Slots' : view === 'login' ? 'Auth Portal' : 'Admin Area'}
+            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clans & Items' : view === 'login' ? 'Auth Portal' : 'Admin Area'}
           </span>
           <span className="sm:hidden">
-            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Clans' : view === 'login' ? 'Auth' : 'Admin'}
+            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Items' : view === 'login' ? 'Auth' : 'Admin'}
           </span>
         </h1>
         <div className="flex items-center gap-2">
-          {/* Page nav buttons — always visible */}
           <button onClick={() => setView('browser')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'browser' ? 'bg-indigo-900 text-indigo-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
             <span className="hidden sm:inline">Jutsu</span>
             <span className="sm:hidden"><BookOpen size={14} /></span>
           </button>
           <button onClick={() => setView('clan_slots')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'clan_slots' ? 'bg-emerald-900 text-emerald-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
-            <span className="hidden sm:inline">Clans</span>
+            <span className="hidden sm:inline">Clans & Items</span>
             <span className="sm:hidden"><UserCheck size={14} /></span>
           </button>
 
@@ -760,3 +748,8 @@ function App() {
 }
 
 export default App;
+```
+
+</details>
+
+All wording updated, version bumped to `v2.3`. Ready to commit.
