@@ -47,6 +47,7 @@ const RefreshCw = (p) => <Icon {...p} path={<><polyline points="23 4 23 10 17 10
 // ============================================================
 const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Medical Ninjutsu", "Sound", "Yang", "Yin"];
 const JUTSU_TYPES = ["1-Post", "Continuous", "Multi-Post", "Hybrid"];
+const RANKS = ["D", "C", "B", "A", "S"];
 const ORIGIN = ["Canon", "Custom"];
 
 const getNatureColor = (nature) => {
@@ -69,7 +70,7 @@ const getNatureColor = (nature) => {
 // ============================================================
 function toArray(val) {
   if (Array.isArray(val)) return val;
-  if (typeof val === 'string' && val.trim() !== '') return [val];
+  if (typeof val === 'string' && val.trim() !== '') return val.split(',').map(s => s.trim()).filter(Boolean);
   return [];
 }
 
@@ -156,6 +157,7 @@ function App() {
   const [fOrigin, setFOrigin] = useState('Any');
   const [fSpec, setFSpec] = useState('Any');
   const [fType, setFType] = useState('Any');
+  const [fRank, setFRank] = useState('Any');
   const [fClanCat, setFClanCat] = useState('Any');
   const [fClanName, setFClanName] = useState('Any');
   const [fLimited, setFLimited] = useState(false);
@@ -331,17 +333,19 @@ function App() {
         if (!j.secretFactions || !j.secretFactions.some(f => fActiveSecrets.includes(f))) return false;
       }
       const specArr = toArray(j.spec);
+      const rankArr = toArray(j.rank);
       const matchSearch = j.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchNature = fNature === 'Any' || j.nature === fNature;
       const matchOrigin = fOrigin === 'Any' || j.origin === fOrigin;
       const matchSpec = fSpec === 'Any' || specArr.includes(fSpec);
       const matchType = fType === 'Any' || j.types.includes(fType);
+      const matchRank = fRank === 'Any' || rankArr.includes(fRank);
       let matchClan = true;
       if (fClanCat !== 'Any') matchClan = j.clanCat === fClanCat && (fClanName === 'Any' || j.clanName === fClanName);
       const matchLimited = fLimited ? j.limited === true : true;
-      return matchSearch && matchNature && matchOrigin && matchSpec && matchType && matchClan && matchLimited;
+      return matchSearch && matchNature && matchOrigin && matchSpec && matchType && matchRank && matchClan && matchLimited;
     });
-  }, [jutsus, searchTerm, fNature, fOrigin, fSpec, fType, fClanCat, fClanName, fLimited, fActiveSecrets]);
+  }, [jutsus, searchTerm, fNature, fOrigin, fSpec, fType, fRank, fClanCat, fClanName, fLimited, fActiveSecrets]);
 
   if (authLoading || dataLoading) {
     return (
@@ -374,9 +378,10 @@ function App() {
       {showFilters && (
         <div className="bg-white border-b border-slate-200 p-4 shadow-inner overflow-y-auto max-h-72 shrink-0">
           <div className="max-w-4xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Origin</label><select value={fOrigin} onChange={e => setFOrigin(e.target.value)} className="w-full text-sm bg-slate-50 border rounded p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"><option value="Any">All Origins</option>{ORIGIN.map(o => <option key={o} value={o}>{o}</option>)}</select></div>
               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Type</label><select value={fType} onChange={e => setFType(e.target.value)} className="w-full text-sm bg-slate-50 border rounded p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"><option value="Any">All Types</option>{JUTSU_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+              <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Rank</label><select value={fRank} onChange={e => setFRank(e.target.value)} className="w-full text-sm bg-slate-50 border rounded p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"><option value="Any">All Ranks</option>{RANKS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
               <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Specialization</label><select value={fSpec} onChange={e => setFSpec(e.target.value)} className="w-full text-sm bg-slate-50 border rounded p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"><option value="Any">All Specs</option>{SPECIALIZATIONS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
             </div>
             <div className="border-t border-slate-100 pt-4 mt-4">
@@ -431,6 +436,7 @@ function App() {
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredJutsus.map(j => {
               const specArr = toArray(j.spec);
+              const rankArr = toArray(j.rank);
               return (
               <div key={j._id} className={`bg-white rounded-2xl shadow-sm border flex flex-col overflow-hidden hover:shadow-md transition-shadow ${j.secret ? 'border-purple-300 shadow-purple-100' : 'border-slate-200'}`}>
                 <div className={`p-4 pb-0 flex-1 ${j.secret ? 'bg-purple-50/30' : ''}`}>
@@ -450,7 +456,7 @@ function App() {
                 </div>
                 <div className="bg-slate-50 border-t border-slate-100 px-4 py-3 flex items-center justify-between mt-auto">
                   <div className="flex items-center gap-4">
-                    <div><div className="text-[10px] font-bold text-slate-400 uppercase">Rank</div><div className="text-sm font-black text-slate-700">{j.rank.join(", ") || "-"}</div></div>
+                    <div><div className="text-[10px] font-bold text-slate-400 uppercase">Rank</div><div className="text-sm font-black text-slate-700">{rankArr.join(", ") || "-"}</div></div>
                     <div className="h-6 w-px bg-slate-200"></div>
                     <div><div className="text-[10px] font-bold text-slate-400 uppercase">CU Cost</div><div className="text-sm font-black text-indigo-600">{j.cost || '-'}</div></div>
                   </div>
