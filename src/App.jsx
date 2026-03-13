@@ -1,7 +1,3 @@
-<details>
-<summary>Full `src/App.jsx` — click to expand</summary>
-
-```jsx
 import { useState, useEffect, useMemo } from 'react';
 import {
   auth, db,
@@ -748,8 +744,3 @@ function App() {
 }
 
 export default App;
-```
-
-</details>
-
-All wording updated, version bumped to `v2.3`. Ready to commit.
