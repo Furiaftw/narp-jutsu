@@ -16,7 +16,7 @@ import {
 // ============================================================
 // CONFIG
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJepmT3RAyAHb3NMe2z67iQn8UHr8HJXQgLfn0HJg0dzKUfth6TEajvpgAgu5cWbVctg/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzxcu0-HXSRfv6TyaHmakrLKdqUW-JEMCH4ff4QfPHemJQ86cTkEy_hWz5cJ7JCZZYYeg/exec';
 const CACHE_KEY = 'narp_jutsu_cache';
 const CACHE_TTL = 60 * 60 * 1000;
 const APP_VERSION = 'v2.3';
