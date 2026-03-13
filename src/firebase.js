@@ -18,12 +18,12 @@ import {
 } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCLBEWiRq9RPR8u_NkptLpj2Y8ybOHljHw",
-  authDomain: "narp-jutsu-db.firebaseapp.com",
-  projectId: "narp-jutsu-db",
-  storageBucket: "narp-jutsu-db.firebasestorage.app",
-  messagingSenderId: "294205399255",
-  appId: "1:294205399255:web:5c3d0f55485db6428d1092"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);

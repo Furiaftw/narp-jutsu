@@ -12,7 +12,7 @@ import {
 // ============================================================
 // CONFIG
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxJepmT3RAyAHb3NMe2z67iQn8UHr8HJXQgLfn0HJg0dzKUfth6TEajvpgAgu5cWbVctg/exec';
+const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL;
 const CACHE_KEY = 'narp_jutsu_cache';
 const CACHE_TTL = 60 * 60 * 1000;
 
