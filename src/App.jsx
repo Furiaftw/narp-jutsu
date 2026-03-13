@@ -132,7 +132,38 @@ async function fetchSheetData() {
     };
   });
 
-  const result = { jutsus, bloodlines, factions, clanSlots, ts: Date.now() };
+  // Build a map of bloodline name -> first doc link from jutsus
+  const bloodlineLinks = {};
+  jutsus.forEach(j => {
+    if (j.link && j.clanName && j.clanName !== 'None' && !bloodlineLinks[j.clanName]) {
+      bloodlineLinks[j.clanName] = j.link;
+    }
+  });
+
+  // Enrich clanSlots with doc links from matching jutsus when no direct link exists
+  const enrichedClanSlots = clanSlots.map(slot => ({
+    ...slot,
+    link: slot.link || bloodlineLinks[slot.name] || '',
+  }));
+
+  // Build limited items from jutsus that have the "limited" condition
+  const limitedItems = jutsus
+    .filter(j => j.limited && j.link)
+    .map(j => ({
+      name: j.name,
+      available: true,
+      link: j.link,
+      isLimitedItem: true,
+    }));
+
+  // Merge limited items into clan slots (avoid duplicates by name)
+  const existingNames = new Set(enrichedClanSlots.map(s => s.name.toLowerCase()));
+  const mergedSlots = [
+    ...enrichedClanSlots,
+    ...limitedItems.filter(li => !existingNames.has(li.name.toLowerCase())),
+  ];
+
+  const result = { jutsus, bloodlines, factions, clanSlots: mergedSlots, ts: Date.now() };
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch (e) { }
   return result;
 }
@@ -556,11 +587,14 @@ function App() {
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {filteredClans.map((clan, idx) => (
               <div key={`${clan.name}-${idx}`} className={`rounded-xl border p-4 flex items-center justify-between transition-shadow hover:shadow-md ${clan.available ? 'bg-white border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                {clan.link ? (
-                  <a href={clan.link} target="_blank" rel="noopener noreferrer" className={`font-bold text-sm underline decoration-1 underline-offset-2 transition-colors ${clan.available ? 'text-indigo-700 hover:text-indigo-900' : 'text-slate-400 hover:text-slate-600'}`}>{clan.name}</a>
-                ) : (
-                  <span className={`font-bold text-sm ${clan.available ? 'text-slate-800' : 'text-slate-400'}`}>{clan.name}</span>
-                )}
+                <div className="flex items-center gap-2 min-w-0">
+                  {clan.link ? (
+                    <a href={clan.link} target="_blank" rel="noopener noreferrer" className={`font-bold text-sm underline decoration-1 underline-offset-2 transition-colors ${clan.available ? 'text-indigo-700 hover:text-indigo-900' : 'text-slate-400 hover:text-slate-600'}`}>{clan.name}</a>
+                  ) : (
+                    <span className={`font-bold text-sm ${clan.available ? 'text-slate-800' : 'text-slate-400'}`}>{clan.name}</span>
+                  )}
+                  {clan.isLimitedItem && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-100 text-rose-800 border border-rose-200 shrink-0">Limited</span>}
+                </div>
                 {clan.available ? (
                   <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-3 py-1 rounded-full">
                     <CheckCircle size={14} /> Open
