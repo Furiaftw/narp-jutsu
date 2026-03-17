@@ -47,7 +47,7 @@ const UserCheck = (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6
 // ============================================================
 // STATIC CONSTANTS
 // ============================================================
-const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Medical Ninjutsu", "Sound", "Yang", "Yin"];
+const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Sound", "Yang", "Yin"];
 const JUTSU_TYPES = ["1-Post", "Continuous", "Multi-Post", "Hybrid"];
 const RANKS = ["D", "C", "B", "A", "S"];
 const ORIGIN = ["Canon", "Custom"];
@@ -59,14 +59,12 @@ const getNatureColor = (nature) => {
     "Lightning": "bg-yellow-200 text-yellow-900 border-yellow-300",
     "Earth": "bg-red-900 text-red-100 border-red-800",
     "Wind": "bg-green-100 text-green-800 border-green-200",
-    "Medical Ninjutsu": "bg-emerald-100 text-emerald-800 border-emerald-300",
     "Sound": "bg-fuchsia-200 text-fuchsia-900 border-fuchsia-300",
     "Yang": "bg-amber-100 text-amber-900 border-amber-300",
     "Yin": "bg-purple-100 text-purple-900 border-purple-300",
   };
   return colors[nature] || "bg-slate-200 text-slate-800 border-slate-300";
 };
-
 // ============================================================
 // HELPERS
 // ============================================================
