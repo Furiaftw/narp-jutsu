@@ -12,10 +12,10 @@ import {
 // ============================================================
 // CONFIG
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwtenwxf4oiShSKDlt0hmhCuWdY3eg3eLVMY0irQVwAx29eRZ6Ii5YdO4u1S1BGCPqMGg/exec';
+const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL;
 const CACHE_KEY = 'narp_jutsu_cache';
 const CACHE_TTL = 60 * 60 * 1000;
-const APP_VERSION = 'v2.4';
+const APP_VERSION = 'v2.5';
 
 // ============================================================
 // ICONS
@@ -43,6 +43,8 @@ const XCircle = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10" /><li
 const Clock = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>} />;
 const RefreshCw = (p) => <Icon {...p} path={<><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></>} />;
 const UserCheck = (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><polyline points="16 11 18 13 22 9" /></>} />;
+const Swords = (p) => <Icon {...p} path={<><path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="m16 16 4 4" /><path d="m19 21 2-2" /><path d="M14.5 6.5 18 3h3v3l-3.5 3.5" /><path d="m5 14 4 4" /><path d="m7 17-3 3" /><path d="m3 19 2 2" /></>} />;
+const Zap = (p) => <Icon {...p} path={<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />} />;
 
 // ============================================================
 // STATIC CONSTANTS
@@ -51,6 +53,16 @@ const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Sound", "Yang",
 const JUTSU_TYPES = ["1-Post", "Continuous", "Multi-Post", "Hybrid"];
 const RANKS = ["D", "C", "B", "A", "S"];
 const ORIGIN = ["Canon", "Custom"];
+const BATTLEMODE_CATEGORIES = ["Tertiary", "Secondary", "Primary"];
+
+const getBattlemodeColor = (category) => {
+  const colors = {
+    "Tertiary": "bg-teal-100 text-teal-800 border-teal-200",
+    "Secondary": "bg-amber-100 text-amber-800 border-amber-200",
+    "Primary": "bg-rose-100 text-rose-800 border-rose-200",
+  };
+  return colors[category] || "bg-slate-200 text-slate-800 border-slate-300";
+};
 
 const getNatureColor = (nature) => {
   const colors = {
@@ -161,7 +173,34 @@ async function fetchSheetData() {
     ...limitedItems.filter(li => !existingNames.has(li.name.toLowerCase())),
   ];
 
-  const result = { jutsus, bloodlines, factions, clanSlots: mergedSlots, ts: Date.now() };
+  // Process battlemodes from API
+  const battlemodes = (json.battlemodes || []).map((row, idx) => {
+    const name = row['Battlemode Name'] || row['Name'] || '';
+    if (!name) return null;
+    const category = row['Category'] || '';
+    const chakraCost = row['Chakra Cost Per Turn'] || '';
+    const clan = row['Bloodline/KKG/Clan'] || row['Clan'] || row['Bloodline'] || '';
+    const nature = row['Nature'] || '';
+    const link = row['Doc Link'] || row['Link'] || '';
+    const limitedSlotsVal = (row['Limited Slots'] || '').toLowerCase();
+    const hasLimitedSlots = limitedSlotsVal === 'yes';
+    const availableVal = (row['Available'] || row['Availability'] || '').toLowerCase();
+    const isAvailable = hasLimitedSlots ? availableVal !== 'unavailable' : true;
+
+    return {
+      _id: `bm-${idx}`,
+      name,
+      category,
+      chakraCost,
+      clan,
+      nature,
+      link,
+      limitedSlots: hasLimitedSlots,
+      available: isAvailable,
+    };
+  }).filter(Boolean);
+
+  const result = { jutsus, bloodlines, factions, clanSlots: mergedSlots, battlemodes, ts: Date.now() };
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch (e) { }
   return result;
 }
@@ -174,6 +213,7 @@ function App() {
   const [bloodlines, setBloodlines] = useState({});
   const [factions, setFactions] = useState([]);
   const [clanSlots, setClanSlots] = useState([]);
+  const [battlemodes, setBattlemodes] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
 
@@ -197,6 +237,8 @@ function App() {
   const [fActiveSecrets, setFActiveSecrets] = useState([]);
 
   const [clanSearch, setClanSearch] = useState('');
+  const [bmSearch, setBmSearch] = useState('');
+  const [fBmCategory, setFBmCategory] = useState('Any');
 
   const [loginTab, setLoginTab] = useState('faction');
   const [emailInput, setEmailInput] = useState('');
@@ -223,6 +265,14 @@ function App() {
     return clanSlots.filter(c => c.name.toLowerCase().includes(clanSearch.toLowerCase()));
   }, [clanSlots, clanSearch]);
 
+  const filteredBattlemodes = useMemo(() => {
+    return battlemodes.filter(bm => {
+      const matchSearch = !bmSearch.trim() || bm.name.toLowerCase().includes(bmSearch.toLowerCase());
+      const matchCategory = fBmCategory === 'Any' || bm.category === fBmCategory;
+      return matchSearch && matchCategory;
+    });
+  }, [battlemodes, bmSearch, fBmCategory]);
+
   useEffect(() => {
     fetchSheetData()
       .then(data => {
@@ -230,6 +280,7 @@ function App() {
         setBloodlines(data.bloodlines);
         setFactions(data.factions);
         setClanSlots(data.clanSlots || []);
+        setBattlemodes(data.battlemodes || []);
         setDataLoading(false);
       })
       .catch(err => {
@@ -370,6 +421,7 @@ function App() {
       setBloodlines(data.bloodlines);
       setFactions(data.factions);
       setClanSlots(data.clanSlots || []);
+      setBattlemodes(data.battlemodes || []);
       setDataError(null);
     } catch (err) { setDataError(err.message); }
     setDataLoading(false);
@@ -617,6 +669,113 @@ function App() {
     );
   };
 
+  const renderBattlemodes = () => {
+    const availableCount = battlemodes.filter(bm => bm.available).length;
+    const limitedCount = battlemodes.filter(bm => bm.limitedSlots).length;
+    const unavailableCount = battlemodes.filter(bm => bm.limitedSlots && !bm.available).length;
+
+    return (
+      <div className="flex-1 overflow-y-auto bg-slate-100 pb-10">
+        <div className="bg-slate-900 text-white p-6 shadow-md">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center gap-3 mb-4">
+              <Swords size={28} className="text-rose-400" />
+              <div>
+                <h2 className="text-2xl font-bold">Battlemodes</h2>
+                <p className="text-sm text-slate-400 mt-0.5">Browse available battlemodes by category.</p>
+              </div>
+            </div>
+            <div className="flex gap-4 mb-4 flex-wrap">
+              <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-xl px-4 py-2 flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
+                <span className="text-sm font-bold text-emerald-300">{availableCount} Available</span>
+              </div>
+              {limitedCount > 0 && (
+                <div className="bg-amber-500/20 border border-amber-500/30 rounded-xl px-4 py-2 flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+                  <span className="text-sm font-bold text-amber-300">{limitedCount} Limited</span>
+                </div>
+              )}
+              {unavailableCount > 0 && (
+                <div className="bg-red-500/20 border border-red-500/30 rounded-xl px-4 py-2 flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                  <span className="text-sm font-bold text-red-300">{unavailableCount} Unavailable</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto flex-nowrap md:flex-wrap pb-1 scrollbar-hide mb-3">
+              {['Any', ...BATTLEMODE_CATEGORIES].map(cat => (
+                <button key={cat} onClick={() => setFBmCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-colors ${fBmCategory === cat ? 'bg-rose-500 border-rose-400 text-white shadow-lg shadow-rose-500/30' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>{cat}</button>
+              ))}
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+              <input type="text" placeholder="Search battlemode name..." className="w-full bg-slate-800 text-white rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-rose-500 text-sm" value={bmSearch} onChange={(e) => setBmSearch(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto p-4">
+          {currentUser?.role === 'admin' && (
+            <div className="flex justify-end mb-4">
+              <button onClick={handleForceRefresh} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors"><RefreshCw size={12} /> Refresh</button>
+            </div>
+          )}
+
+          <div className="text-xs font-bold text-slate-400 uppercase mb-4">{filteredBattlemodes.length} Results Found</div>
+
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {filteredBattlemodes.map(bm => (
+              <div key={bm._id} className={`rounded-2xl border flex flex-col overflow-hidden hover:shadow-md transition-shadow ${!bm.available ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white border-slate-200'}`}>
+                <div className="p-4 pb-0 flex-1">
+                  <div className="flex justify-between items-start mb-2">
+                    <h2 className="text-lg font-bold leading-tight">{bm.name}</h2>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getBattlemodeColor(bm.category)}`}>{bm.category}</span>
+                    {bm.nature && <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getNatureColor(bm.nature)}`}>{bm.nature}</span>}
+                    {bm.limitedSlots && (
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 ${bm.available ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 border border-red-200'}`}>
+                        <AlertCircle size={10} /> {bm.available ? 'Available' : 'Unavailable'}
+                      </span>
+                    )}
+                    {!bm.limitedSlots && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-sky-100 text-sky-800 border border-sky-200">Unlimited</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {bm.clan && <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200 flex items-center gap-1"><TagIcon size={12} /> {bm.clan}</span>}
+                  </div>
+                </div>
+                <div className="bg-slate-50 border-t border-slate-100 px-4 py-3 flex items-center justify-between mt-auto">
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Chakra / Turn</div>
+                    <div className="text-sm font-black text-indigo-600">{bm.category === 'Tertiary' ? 'None' : (bm.chakraCost || '-')}</div>
+                  </div>
+                </div>
+                <div className="p-4 pt-0 bg-slate-50 border-t border-slate-100 flex gap-2 pt-3">
+                  {bm.link && bm.link !== 'Link' ? (
+                    <a href={bm.link} target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-slate-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-sm transition-colors"><ExternalLink size={16} /> Doc</a>
+                  ) : (
+                    <span className="flex-1 bg-slate-100 border border-slate-200 text-slate-400 font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-sm cursor-not-allowed">No Doc</span>
+                  )}
+                  {bm.link && bm.link !== 'Link' && <button onClick={() => handleCopyLink(bm.link, bm._id)} className={`p-2.5 rounded-xl flex items-center justify-center min-w-[50px] transition-all border ${copiedId === bm._id ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>{copiedId === bm._id ? <Check size={18} /> : <Copy size={18} />}</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredBattlemodes.length === 0 && (
+            <div className="text-center py-16">
+              <AlertCircle size={40} className="text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500 font-semibold">No battlemodes match your filters.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderLogin = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-100 overflow-y-auto">
       <div className="bg-white p-8 rounded-3xl shadow-xl border w-full max-w-sm">
@@ -731,13 +890,14 @@ function App() {
         <h1 className="text-lg font-bold tracking-widest uppercase flex items-center gap-2">
           {view === 'browser' && <BookOpen size={18} className="text-indigo-400" />}
           {view === 'clan_slots' && <UserCheck size={18} className="text-emerald-400" />}
+          {view === 'battlemodes' && <Swords size={18} className="text-rose-400" />}
           {view === 'login' && <Key size={18} className="text-indigo-400" />}
           {view === 'admin_dashboard' && <UsersIcon size={18} className="text-emerald-400" />}
           <span className="hidden sm:inline">
-            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clans & Items' : view === 'login' ? 'Auth Portal' : 'Admin Area'}
+            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clans & Items' : view === 'battlemodes' ? 'Battlemodes' : view === 'login' ? 'Auth Portal' : 'Admin Area'}
           </span>
           <span className="sm:hidden">
-            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Items' : view === 'login' ? 'Auth' : 'Admin'}
+            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Items' : view === 'battlemodes' ? 'BM' : view === 'login' ? 'Auth' : 'Admin'}
           </span>
         </h1>
         <div className="flex items-center gap-2">
@@ -748,6 +908,10 @@ function App() {
           <button onClick={() => setView('clan_slots')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'clan_slots' ? 'bg-emerald-900 text-emerald-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
             <span className="hidden sm:inline">Clans & Items</span>
             <span className="sm:hidden"><UserCheck size={14} /></span>
+          </button>
+          <button onClick={() => setView('battlemodes')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'battlemodes' ? 'bg-rose-900 text-rose-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+            <span className="hidden sm:inline">Battlemodes</span>
+            <span className="sm:hidden"><Swords size={14} /></span>
           </button>
 
           {currentUser ? (
@@ -769,6 +933,7 @@ function App() {
 
       {view === 'browser' && renderBrowser()}
       {view === 'clan_slots' && renderClanSlots()}
+      {view === 'battlemodes' && renderBattlemodes()}
       {view === 'login' && renderLogin()}
       {view === 'admin_dashboard' && currentUser?.role === 'admin' && renderAdminDashboard()}
 
