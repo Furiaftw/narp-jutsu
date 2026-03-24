@@ -52,7 +52,7 @@ export default async (req) => {
   try {
     // GET — list all rows from a table
     if (req.method === 'GET') {
-      const rows = await sql(`SELECT * FROM ${table} ORDER BY id`);
+      const rows = await sql.query(`SELECT * FROM ${table} ORDER BY id`);
       return json({ table, rows, count: rows.length });
     }
 
@@ -66,7 +66,7 @@ export default async (req) => {
       const vals = Object.values(fields);
       const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
       const query = `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders}) RETURNING *`;
-      const rows = await sql(query, vals);
+      const rows = await sql.query(query, vals);
       return json({ success: true, row: rows[0] }, 201);
     }
 
@@ -81,7 +81,7 @@ export default async (req) => {
       const vals = Object.values(fields);
       const setClauses = cols.map((col, i) => `${col} = $${i + 1}`).join(', ');
       const query = `UPDATE ${table} SET ${setClauses} WHERE id = $${cols.length + 1} RETURNING *`;
-      const rows = await sql(query, [...vals, Number(id)]);
+      const rows = await sql.query(query, [...vals, Number(id)]);
       if (rows.length === 0) return json({ error: 'Row not found' }, 404);
       return json({ success: true, row: rows[0] });
     }
@@ -89,7 +89,7 @@ export default async (req) => {
     // DELETE — delete a row by id
     if (req.method === 'DELETE') {
       if (!id) return json({ error: 'Missing id parameter' }, 400);
-      const rows = await sql(`DELETE FROM ${table} WHERE id = $1 RETURNING *`, [Number(id)]);
+      const rows = await sql.query(`DELETE FROM ${table} WHERE id = $1 RETURNING *`, [Number(id)]);
       if (rows.length === 0) return json({ error: 'Row not found' }, 404);
       return json({ success: true, deleted: rows[0] });
     }

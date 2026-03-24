@@ -18,14 +18,16 @@ const CACHE_KEY = 'narp_db_cache_v8';
 const APP_VERSION = 'v4.1';
 const SUPER_ADMIN_EMAIL = 'grisales4000@gmail.com';
 
+const RANK_COST_MAP = { E: '1 CU', D: '2 CU', C: '4 CU', B: '6 CU', A: '8 CU', S: '10 CU' };
+
 const MANAGE_TABLES = {
   jutsus: { label: 'Jutsus', fields: [
     { key: 'name', label: 'Ability Name', required: true },
-    { key: 'nature', label: 'Nature Type' },
-    { key: 'rank', label: 'Rank' },
-    { key: 'cost', label: 'Cost' },
-    { key: 'types', label: 'Jutsu Types' },
-    { key: 'origin', label: 'Origin' },
+    { key: 'nature', label: 'Nature Type', type: 'select', options: ['', 'Fire', 'Water', 'Earth', 'Wind', 'Lightning', 'Yin', 'Yang', 'Yin-Yang', 'N/A'] },
+    { key: 'rank', label: 'Rank', type: 'select', options: ['', 'E', 'D', 'C', 'B', 'A', 'S'] },
+    { key: 'cost', label: 'Cost', hidden: true },
+    { key: 'types', label: 'Jutsu Types', type: 'select', options: ['', 'Ninjutsu', 'Taijutsu', 'Genjutsu', 'Bukijutsu', 'Fuinjutsu', 'Kinjutsu', 'Senjutsu', 'Kenjutsu', 'Iryō Ninjutsu'] },
+    { key: 'origin', label: 'Origin', type: 'select', options: ['', 'Canon', 'Custom', 'Clan'] },
     { key: 'specialization', label: 'Specialization' },
     { key: 'doc_link', label: 'Doc Link' },
     { key: 'bloodline', label: 'Bloodline' },
@@ -34,16 +36,16 @@ const MANAGE_TABLES = {
   ]},
   battlemodes: { label: 'Battlemodes', fields: [
     { key: 'name', label: 'Name', required: true },
-    { key: 'category', label: 'Category (Primary/Secondary/Tertiary)' },
+    { key: 'category', label: 'Category', type: 'select', options: ['', 'Primary', 'Secondary', 'Tertiary'] },
     { key: 'bloodline', label: 'Bloodline/Hidden' },
-    { key: 'nature', label: 'Nature(s)' },
+    { key: 'nature', label: 'Nature(s)', type: 'select', options: ['', 'Fire', 'Water', 'Earth', 'Wind', 'Lightning', 'Yin', 'Yang', 'Yin-Yang', 'N/A'] },
     { key: 'doc_link', label: 'Doc Link' },
-    { key: 'limited', label: 'Limited (Yes/No)' },
-    { key: 'available', label: 'Available' },
+    { key: 'limited', label: 'Limited', type: 'select', options: ['', 'Yes', 'No'] },
+    { key: 'available', label: 'Available', type: 'select', options: ['', 'Yes', 'No'] },
   ]},
   clan_slots: { label: 'Clan Slots', fields: [
     { key: 'name', label: 'Name', required: true },
-    { key: 'available', label: 'Available' },
+    { key: 'available', label: 'Available', type: 'select', options: ['', 'Yes', 'No'] },
     { key: 'doc_link', label: 'Doc Link' },
   ]},
   bloodlines: { label: 'Bloodlines', fields: [
@@ -347,6 +349,7 @@ function App() {
   const [manageSuccess, setManageSuccess] = useState(null);
   const [editingRow, setEditingRow] = useState(null); // null = not editing, {} = new row, {id: ...} = editing existing
   const [formData, setFormData] = useState({});
+  const [customCost, setCustomCost] = useState(false);
   const [manageSearch, setManageSearch] = useState('');
 
   // Database seed/migrate state
@@ -594,6 +597,7 @@ function App() {
     MANAGE_TABLES[manageTable].fields.forEach(f => { empty[f.key] = ''; });
     setFormData(empty);
     setEditingRow({});
+    setCustomCost(false);
     setManageSuccess(null);
     setManageError(null);
   };
@@ -603,6 +607,12 @@ function App() {
     MANAGE_TABLES[manageTable].fields.forEach(f => { data[f.key] = row[f.key] || ''; });
     setFormData(data);
     setEditingRow(row);
+    // Detect if existing cost differs from rank-based auto cost
+    if (manageTable === 'jutsus' && data.rank && RANK_COST_MAP[data.rank]) {
+      setCustomCost(data.cost !== '' && data.cost !== RANK_COST_MAP[data.rank]);
+    } else {
+      setCustomCost(manageTable === 'jutsus' && data.cost !== '' && !data.rank);
+    }
     setManageSuccess(null);
     setManageError(null);
   };
@@ -610,6 +620,7 @@ function App() {
   const handleCancelEdit = () => {
     setEditingRow(null);
     setFormData({});
+    setCustomCost(false);
   };
 
   const handleSaveRow = async () => {
@@ -621,10 +632,15 @@ function App() {
       const url = isNew
         ? `${ADMIN_API_URL}?table=${manageTable}`
         : `${ADMIN_API_URL}?table=${manageTable}&id=${editingRow.id}`;
+      // Auto-calculate cost from rank for jutsus unless custom cost is enabled
+      const payload = { ...formData };
+      if (manageTable === 'jutsus' && !customCost && payload.rank && RANK_COST_MAP[payload.rank]) {
+        payload.cost = RANK_COST_MAP[payload.rank];
+      }
       const res = await fetch(url, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Save failed');
@@ -657,7 +673,7 @@ function App() {
 
   // Load manage rows when switching to manage view
   useEffect(() => {
-    if (view === 'manage_data' && currentUser?.role === 'admin') {
+    if (view === 'manage_data' && (currentUser?.role === 'admin' || currentUser?.role === 'staff')) {
       fetchManageRows(manageTable);
     }
   }, [view]);
@@ -1359,20 +1375,69 @@ function App() {
                 {editingRow.id ? <><Edit2 size={18} /> Edit {tableConfig.label.slice(0, -1)}</> : <><PlusCircle size={18} /> Add New {tableConfig.label.slice(0, -1)}</>}
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {tableConfig.fields.map(field => (
+                {tableConfig.fields.filter(f => !f.hidden).map(field => (
                   <div key={field.key}>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
                       {field.label} {field.required && <span className="text-red-500">*</span>}
                     </label>
-                    <input
-                      type="text"
-                      value={formData[field.key] || ''}
-                      onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
-                      className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"
-                      placeholder={field.label}
-                    />
+                    {field.type === 'select' ? (
+                      <select
+                        value={formData[field.key] || ''}
+                        onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                        className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      >
+                        {field.options.map(opt => (
+                          <option key={opt} value={opt}>{opt || `— Select ${field.label} —`}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={formData[field.key] || ''}
+                        onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                        className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder={field.label}
+                      />
+                    )}
                   </div>
                 ))}
+                {/* Auto-cost display for jutsus */}
+                {manageTable === 'jutsus' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                      Cost {!customCost && formData.rank && RANK_COST_MAP[formData.rank] && <span className="text-indigo-500 normal-case font-normal">(auto: {RANK_COST_MAP[formData.rank]})</span>}
+                    </label>
+                    <div className="flex items-center gap-3">
+                      {customCost ? (
+                        <input
+                          type="text"
+                          value={formData.cost || ''}
+                          onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+                          className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"
+                          placeholder="Custom cost"
+                        />
+                      ) : (
+                        <div className="flex-1 text-sm bg-slate-100 border border-slate-200 rounded-lg p-2.5 text-slate-500">
+                          {formData.rank && RANK_COST_MAP[formData.rank] ? RANK_COST_MAP[formData.rank] : 'Select a rank'}
+                        </div>
+                      )}
+                      <label className="flex items-center gap-1.5 text-xs text-slate-500 whitespace-nowrap cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customCost}
+                          onChange={(e) => {
+                            setCustomCost(e.target.checked);
+                            if (!e.target.checked && formData.rank && RANK_COST_MAP[formData.rank]) {
+                              setFormData({ ...formData, cost: RANK_COST_MAP[formData.rank] });
+                            }
+                          }}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        Custom
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3 mt-5">
                 <button
