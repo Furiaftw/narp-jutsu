@@ -13,9 +13,9 @@ import {
 // CONFIG
 // ============================================================
 const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL;
-const CACHE_KEY = 'narp_jutsu_cache';
+const CACHE_KEY = 'narp_db_cache_v3';
 const CACHE_TTL = 60 * 60 * 1000;
-const APP_VERSION = 'v2.5';
+const APP_VERSION = 'v2.7';
 
 // ============================================================
 // ICONS
@@ -50,8 +50,8 @@ const Zap = (p) => <Icon {...p} path={<polygon points="13 2 3 14 12 14 11 22 21 
 // STATIC CONSTANTS
 // ============================================================
 const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Sound", "Yang", "Yin"];
-const JUTSU_TYPES = ["1-Post", "Continuous", "Multi-Post", "Hybrid"];
-const RANKS = ["D", "C", "B", "A", "S"];
+const JUTSU_TYPES = ["1 Post", "Continuous", "Multi-Post", "Hybrid"];
+const RANKS = ["E", "D", "C", "B", "A", "S"];
 const ORIGIN = ["Canon", "Custom"];
 const BATTLEMODE_CATEGORIES = ["Tertiary", "Secondary", "Primary"];
 
@@ -98,17 +98,25 @@ function deriveClanCategory(bloodlineName, bloodlineDb) {
 }
 
 async function fetchSheetData() {
+  // Clear any old cache keys from previous versions
+  try { localStorage.removeItem('narp_jutsu_cache'); } catch(e) {}
+  try { localStorage.removeItem('narp_db_cache_v2'); } catch(e) {}
+
   try {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
       const parsed = JSON.parse(cached);
-      if (Date.now() - parsed.ts < CACHE_TTL) return parsed;
+      if (Date.now() - parsed.ts < CACHE_TTL) {
+        console.log('[NARP] Using cached data. Battlemodes:', (parsed.battlemodes || []).length);
+        return parsed;
+      }
     }
   } catch (e) { }
 
   const res = await fetch(APPS_SCRIPT_URL);
   if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
   const json = await res.json();
+  console.log('[NARP] API response keys:', Object.keys(json), 'battlemodes count:', (json.battlemodes || []).length);
   if (json.error) throw new Error(json.error);
 
   const bloodlines = json.bloodlines || {};
@@ -156,35 +164,27 @@ async function fetchSheetData() {
     link: slot.link || bloodlineLinks[slot.name] || '',
   }));
 
-  // Build limited items from jutsus that have the "limited" condition
-  const limitedItems = jutsus
-    .filter(j => j.limited && j.link)
-    .map(j => ({
-      name: j.name,
-      available: true,
-      link: j.link,
-      isLimitedItem: true,
-    }));
-
-  // Merge limited items into clan slots (avoid duplicates by name)
-  const existingNames = new Set(enrichedClanSlots.map(s => s.name.toLowerCase()));
-  const mergedSlots = [
-    ...enrichedClanSlots,
-    ...limitedItems.filter(li => !existingNames.has(li.name.toLowerCase())),
-  ];
-
   // Process battlemodes from API
-  const battlemodes = (json.battlemodes || []).map((row, idx) => {
+  const rawBattlemodes = json.battlemodes || [];
+  console.log('[NARP] Raw battlemodes from API:', rawBattlemodes.length, rawBattlemodes);
+
+  const battlemodes = rawBattlemodes.map((row, idx) => {
     const name = row['Name'] || row['Battlemode Name'] || '';
     if (!name) return null;
     const category = row['Type'] || row['Category'] || '';
-    const clan = row['Bloodline/Hidden'] || row['Bloodline/KKG/Clan'] || row['Clan'] || '';
-    const nature = row['Nature(s)'] || row['Nature'] || '';
+    const rawClan = row['Bloodline/Hidden'] || row['Bloodline/KKG/Clan'] || row['Clan'] || '';
+    const clan = (rawClan.toLowerCase() === 'n/a' || rawClan.toLowerCase() === 'none') ? '' : rawClan;
+    const rawNature = row['Nature(s)'] || row['Nature'] || '';
+    const nature = (rawNature.toLowerCase() === 'n/a' || rawNature.toLowerCase() === 'none') ? '' : rawNature;
     const link = row['Doc'] || row['Doc Link'] || row['Link'] || '';
-    const limitedVal = (row['Limited'] || row['Limited Slots'] || '').toLowerCase();
-    const hasLimitedSlots = limitedVal === 'yes';
+    const limitedVal = (row['Limited'] || row['Limited Slots'] || '').toLowerCase().trim();
+    const hasLimitedSlots = limitedVal === 'yes' || limitedVal === 'true';
     const availableSlot = row['AvailableSlot'] || '';
-    const isAvailable = hasLimitedSlots ? (!!availableSlot && availableSlot !== '0') : true;
+    // Handle both numeric ("6") and text ("Available"/"Yes") slot values
+    const slotLower = availableSlot.toLowerCase().trim();
+    const isAvailable = hasLimitedSlots
+      ? (!!availableSlot && slotLower !== '0' && slotLower !== 'no' && slotLower !== 'unavailable' && slotLower !== 'closed')
+      : true;
 
     return {
       _id: `bm-${idx}`,
@@ -199,7 +199,9 @@ async function fetchSheetData() {
     };
   }).filter(Boolean);
 
-  const result = { jutsus, bloodlines, factions, clanSlots: mergedSlots, battlemodes, ts: Date.now() };
+  console.log('[NARP] Processed battlemodes:', battlemodes.length, battlemodes);
+
+  const result = { jutsus, bloodlines, factions, clanSlots: enrichedClanSlots, battlemodes, ts: Date.now() };
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch (e) { }
   return result;
 }
@@ -642,7 +644,6 @@ function App() {
                   ) : (
                     <span className={`font-bold text-sm ${clan.available ? 'text-slate-800' : 'text-slate-400'}`}>{clan.name}</span>
                   )}
-                  {clan.isLimitedItem && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-100 text-rose-800 border border-rose-200 shrink-0">Limited</span>}
                 </div>
                 {clan.available ? (
                   <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-3 py-1 rounded-full">
@@ -732,7 +733,9 @@ function App() {
                   </div>
                   <div className="flex flex-wrap gap-2 mb-3">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getBattlemodeColor(bm.category)}`}>{bm.category}</span>
-                    {bm.nature && <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getNatureColor(bm.nature)}`}>{bm.nature}</span>}
+                    {bm.nature && bm.nature.split(',').map(n => n.trim()).filter(Boolean).map(n => (
+                      <span key={n} className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getNatureColor(n)}`}>{n}</span>
+                    ))}
                     {bm.limitedSlots && (
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 ${bm.available ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 border border-red-200'}`}>
                         <AlertCircle size={10} /> {bm.available ? 'Available' : 'Unavailable'}
