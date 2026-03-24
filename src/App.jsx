@@ -12,10 +12,10 @@ import {
 // ============================================================
 // CONFIG
 // ============================================================
-const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL;
-const CACHE_KEY = 'narp_db_cache_v3';
-const CACHE_TTL = 60 * 60 * 1000;
-const APP_VERSION = 'v2.7';
+const DATA_API_URL = '/api/data';
+const CACHE_KEY = 'narp_db_cache_v8';
+const APP_VERSION = 'v4.1';
+const SUPER_ADMIN_EMAIL = 'grisales4000@gmail.com';
 
 // ============================================================
 // ICONS
@@ -45,6 +45,7 @@ const RefreshCw = (p) => <Icon {...p} path={<><polyline points="23 4 23 10 17 10
 const UserCheck = (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><polyline points="16 11 18 13 22 9" /></>} />;
 const Swords = (p) => <Icon {...p} path={<><path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="m16 16 4 4" /><path d="m19 21 2-2" /><path d="M14.5 6.5 18 3h3v3l-3.5 3.5" /><path d="m5 14 4 4" /><path d="m7 17-3 3" /><path d="m3 19 2 2" /></>} />;
 const Zap = (p) => <Icon {...p} path={<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />} />;
+const Database = (p) => <Icon {...p} path={<><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" /></>} />;
 
 // ============================================================
 // STATIC CONSTANTS
@@ -97,49 +98,104 @@ function deriveClanCategory(bloodlineName, bloodlineDb) {
   return 'None';
 }
 
-async function fetchSheetData() {
+// Helper: find a value from an object trying multiple key names (case-insensitive)
+function getVal(obj, ...candidates) {
+  if (!obj || typeof obj !== 'object') return undefined;
+  for (const c of candidates) {
+    if (obj[c] !== undefined && obj[c] !== null) return obj[c];
+  }
+  // Fallback: case-insensitive search
+  const keys = Object.keys(obj);
+  for (const c of candidates) {
+    const lower = c.toLowerCase().replace(/[\s_-]/g, '');
+    const match = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === lower);
+    if (match && obj[match] !== undefined && obj[match] !== null) return obj[match];
+  }
+  return undefined;
+}
+
+// Helper: get string value from a row, trying multiple column names
+function getStr(row, ...candidates) {
+  const val = getVal(row, ...candidates);
+  return val !== undefined && val !== null ? String(val).trim() : '';
+}
+
+// Load data from localStorage cache only (no API call)
+function loadCachedData() {
   // Clear any old cache keys from previous versions
   try { localStorage.removeItem('narp_jutsu_cache'); } catch(e) {}
-  try { localStorage.removeItem('narp_db_cache_v2'); } catch(e) {}
+  for (let i = 2; i <= 7; i++) {
+    try { localStorage.removeItem(`narp_db_cache_v${i}`); } catch(e) {}
+  }
 
   try {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
       const parsed = JSON.parse(cached);
-      if (Date.now() - parsed.ts < CACHE_TTL) {
-        console.log('[NARP] Using cached data. Battlemodes:', (parsed.battlemodes || []).length);
-        return parsed;
-      }
+      console.log('[NARP] Loaded cached data. Battlemodes:', (parsed.battlemodes || []).length, 'ClanSlots:', (parsed.clanSlots || []).length);
+      return parsed;
     }
   } catch (e) { }
+  return null;
+}
 
-  const res = await fetch(APPS_SCRIPT_URL);
+// Fetch fresh data from API (admin-only action) and process it
+async function fetchFreshData() {
+  const res = await fetch(DATA_API_URL);
   if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
   const json = await res.json();
-  console.log('[NARP] API response keys:', Object.keys(json), 'battlemodes count:', (json.battlemodes || []).length);
+  console.log('[NARP] API response keys:', Object.keys(json));
   if (json.error) throw new Error(json.error);
 
-  const bloodlines = json.bloodlines || {};
-  const factions = json.factions || [];
-  const clanSlots = json.clanSlots || [];
+  const bloodlines = getVal(json, 'bloodlines', 'Bloodlines') || {};
+  const factions = getVal(json, 'factions', 'Factions') || [];
 
-  const jutsus = (json.jutsus || []).map((row, idx) => {
-    const rankArr = (row['Rank'] || '').split(',').map(r => r.trim()).filter(Boolean);
-    const conditions = (row['Conditions'] || '').toLowerCase();
-    const secretStr = row['Secret Faction'] || '';
+  // Clan slots — try multiple possible key names from the API
+  const rawClanSlots = getVal(json, 'clanSlots', 'clanslots', 'clan_slots', 'ClanSlots', 'Clan Slots') || [];
+  console.log('[NARP] Raw clan slots from API:', rawClanSlots.length, 'sample:', rawClanSlots[0] ? Object.keys(rawClanSlots[0]) : 'none');
+  const clanSlots = rawClanSlots.map(slot => {
+    const name = getStr(slot, 'name', 'Name', 'Clan', 'Clan Name', 'ClanName', 'Item', 'Item Name');
+    if (!name) return null;
+    // Availability: check multiple column names and value patterns
+    const availRaw = getStr(slot, 'available', 'Available', 'Status', 'Availability', 'AvailableSlot');
+    const availLower = availRaw.toLowerCase();
+    // If it's a boolean true/false in the data
+    const availBool = getVal(slot, 'available', 'Available');
+    let isAvailable;
+    if (typeof availBool === 'boolean') {
+      isAvailable = availBool;
+    } else if (availLower === 'n/a' || availLower === 'no' || availLower === 'unavailable' || availLower === 'closed' || availLower === 'taken' || availLower === 'full' || availLower === '0' || availLower === 'false') {
+      isAvailable = false;
+    } else if (availLower === '' && availRaw === '') {
+      // No availability info — default to available
+      isAvailable = true;
+    } else {
+      isAvailable = true;
+    }
+    const link = getStr(slot, 'link', 'Link', 'Doc', 'Doc Link', 'DocLink', 'URL');
+    return { name, available: isAvailable, link };
+  }).filter(Boolean);
+
+  // Jutsus — try multiple possible key names
+  const rawJutsus = getVal(json, 'jutsus', 'Jutsus', 'jutsu', 'Jutsu') || [];
+  const jutsus = rawJutsus.map((row, idx) => {
+    const rankStr = getStr(row, 'Rank', 'rank', 'Ranks');
+    const rankArr = rankStr.split(',').map(r => r.trim()).filter(Boolean);
+    const conditions = getStr(row, 'Conditions', 'conditions', 'Condition').toLowerCase();
+    const secretStr = getStr(row, 'Secret Faction', 'SecretFaction', 'Secret', 'secret faction');
     const secretFactions = secretStr.split(',').map(f => f.trim()).filter(Boolean);
-    const bloodlineName = (row['Bloodline'] || '').trim();
+    const bloodlineName = getStr(row, 'Bloodline', 'bloodline', 'Bloodline/KKG', 'Clan');
 
     return {
       _id: `jutsu-${idx}`,
-      name: row['Ability Name'] || '',
-      nature: row['Nature Type'] || '',
+      name: getStr(row, 'Ability Name', 'AbilityName', 'Name', 'name', 'Jutsu Name', 'JutsuName'),
+      nature: getStr(row, 'Nature Type', 'NatureType', 'Nature', 'nature'),
       rank: rankArr,
-      cost: row['Cost'] || '',
-      types: (row['Jutsu Types'] || '').split(',').map(t => t.trim()).filter(Boolean),
-      origin: row['Origin'] || '',
-      spec: (row['Specialization'] || '').split(',').map(s => s.trim()).filter(Boolean),
-      link: row['Doc Link'] || '',
+      cost: getStr(row, 'Cost', 'cost'),
+      types: getStr(row, 'Jutsu Types', 'JutsuTypes', 'Type', 'Types', 'jutsu types').split(',').map(t => t.trim()).filter(Boolean),
+      origin: getStr(row, 'Origin', 'origin'),
+      spec: getStr(row, 'Specialization', 'specialization', 'Spec', 'spec').split(',').map(s => s.trim()).filter(Boolean),
+      link: getStr(row, 'Doc Link', 'DocLink', 'Link', 'link', 'Doc', 'URL'),
       clanCat: deriveClanCategory(bloodlineName, bloodlines),
       clanName: bloodlineName || 'None',
       limited: conditions.includes('limited'),
@@ -150,41 +206,30 @@ async function fetchSheetData() {
     };
   });
 
-  // Build a map of bloodline name -> first doc link from jutsus
-  const bloodlineLinks = {};
-  jutsus.forEach(j => {
-    if (j.link && j.clanName && j.clanName !== 'None' && !bloodlineLinks[j.clanName]) {
-      bloodlineLinks[j.clanName] = j.link;
-    }
-  });
-
-  // Enrich clanSlots with doc links from matching jutsus when no direct link exists
-  const enrichedClanSlots = clanSlots.map(slot => ({
-    ...slot,
-    link: slot.link || bloodlineLinks[slot.name] || '',
-  }));
-
-  // Process battlemodes from API
-  const rawBattlemodes = json.battlemodes || [];
-  console.log('[NARP] Raw battlemodes from API:', rawBattlemodes.length, rawBattlemodes);
+  // Process battlemodes from API — try multiple key names
+  const rawBattlemodes = getVal(json, 'battlemodes', 'Battlemodes', 'battleModes', 'BattleModes', 'battle_modes', 'Battlemode') || [];
+  console.log('[NARP] Raw battlemodes from API:', rawBattlemodes.length, 'sample:', rawBattlemodes[0] ? Object.keys(rawBattlemodes[0]) : 'none');
+  if (rawBattlemodes.length === 0) {
+    console.warn('[NARP] No battlemodes data found in API response.');
+  }
 
   const battlemodes = rawBattlemodes.map((row, idx) => {
-    const name = row['Name'] || row['Battlemode Name'] || '';
+    const name = getStr(row, 'Name', 'name', 'Battlemode Name', 'BattlemodeName', 'BM Name', 'Battlemode');
     if (!name) return null;
-    const category = row['Type'] || row['Category'] || '';
-    const rawClan = row['Bloodline/Hidden'] || row['Bloodline/KKG/Clan'] || row['Clan'] || '';
+    const category = getStr(row, 'Type', 'type', 'Category', 'category');
+    const rawClan = getStr(row, 'Bloodline/Hidden', 'Bloodline/KKG/Clan', 'Bloodline/KKG', 'Clan', 'clan', 'Bloodline', 'bloodline', 'KKG', 'Hidden');
     const clan = (rawClan.toLowerCase() === 'n/a' || rawClan.toLowerCase() === 'none') ? '' : rawClan;
-    const rawNature = row['Nature(s)'] || row['Nature'] || '';
+    const rawNature = getStr(row, 'Nature(s)', 'Natures', 'Nature', 'nature', 'Nature Type', 'NatureType');
     const nature = (rawNature.toLowerCase() === 'n/a' || rawNature.toLowerCase() === 'none') ? '' : rawNature;
-    const link = row['Doc'] || row['Doc Link'] || row['Link'] || '';
-    const limitedVal = (row['Limited'] || row['Limited Slots'] || '').toLowerCase().trim();
-    const hasLimitedSlots = limitedVal === 'yes' || limitedVal === 'true';
-    const availableSlot = row['AvailableSlot'] || '';
-    // Handle both numeric ("6") and text ("Available"/"Yes") slot values
-    const slotLower = availableSlot.toLowerCase().trim();
+    const link = getStr(row, 'Doc', 'Doc Link', 'DocLink', 'Link', 'link', 'URL');
+    const limitedVal = getStr(row, 'Limited', 'limited', 'Limited Slots', 'LimitedSlots').toLowerCase();
+    const hasLimitedSlots = limitedVal === 'yes' || limitedVal === 'true' || limitedVal === 'limited';
+    // Read availability
+    const availableVal = getStr(row, 'Available', 'available', 'AvailableSlot', 'Availability', 'Status');
+    const availLower = availableVal.toLowerCase();
     const isAvailable = hasLimitedSlots
-      ? (!!availableSlot && slotLower !== '0' && slotLower !== 'no' && slotLower !== 'unavailable' && slotLower !== 'closed')
-      : true;
+      ? (!!availableVal && availLower !== 'n/a' && availLower !== '0' && availLower !== 'no' && availLower !== 'unavailable' && availLower !== 'closed' && availLower !== 'taken' && availLower !== 'full' && availLower !== 'false')
+      : (availLower !== 'no' && availLower !== 'unavailable' && availLower !== 'closed' && availLower !== 'false');
 
     return {
       _id: `bm-${idx}`,
@@ -195,13 +240,16 @@ async function fetchSheetData() {
       link,
       limitedSlots: hasLimitedSlots,
       available: isAvailable,
-      availableSlot: hasLimitedSlots ? availableSlot : null,
     };
   }).filter(Boolean);
 
-  console.log('[NARP] Processed battlemodes:', battlemodes.length, battlemodes);
+  console.log('[NARP] Processed battlemodes:', battlemodes.length);
+  console.log('[NARP] Processed clan slots:', clanSlots.length);
 
-  const result = { jutsus, bloodlines, factions, clanSlots: enrichedClanSlots, battlemodes, ts: Date.now() };
+  // Store raw API response for admin debug tab
+  const rawApiResponse = { ...json, _fetchedAt: new Date().toISOString() };
+
+  const result = { jutsus, bloodlines, factions, clanSlots, battlemodes, rawApiResponse, ts: Date.now() };
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch (e) { }
   return result;
 }
@@ -215,6 +263,7 @@ function App() {
   const [factions, setFactions] = useState([]);
   const [clanSlots, setClanSlots] = useState([]);
   const [battlemodes, setBattlemodes] = useState([]);
+  const [rawApiData, setRawApiData] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState(null);
 
@@ -274,21 +323,18 @@ function App() {
     });
   }, [battlemodes, bmSearch, fBmCategory]);
 
+  // On mount, only load from localStorage cache — no auto API fetch
   useEffect(() => {
-    fetchSheetData()
-      .then(data => {
-        setJutsus(data.jutsus);
-        setBloodlines(data.bloodlines);
-        setFactions(data.factions);
-        setClanSlots(data.clanSlots || []);
-        setBattlemodes(data.battlemodes || []);
-        setDataLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setDataError(err.message);
-        setDataLoading(false);
-      });
+    const cached = loadCachedData();
+    if (cached) {
+      setJutsus(cached.jutsus || []);
+      setBloodlines(cached.bloodlines || {});
+      setFactions(cached.factions || []);
+      setClanSlots(cached.clanSlots || []);
+      setBattlemodes(cached.battlemodes || []);
+      setRawApiData(cached.rawApiResponse || null);
+    }
+    setDataLoading(false);
   }, []);
 
   useEffect(() => {
@@ -414,15 +460,18 @@ function App() {
   };
 
   const handleForceRefresh = async () => {
+    if (currentUser?.role !== 'admin') return; // Only admins can refresh
     setDataLoading(true);
+    setDataError(null);
     localStorage.removeItem(CACHE_KEY);
     try {
-      const data = await fetchSheetData();
+      const data = await fetchFreshData();
       setJutsus(data.jutsus);
       setBloodlines(data.bloodlines);
       setFactions(data.factions);
       setClanSlots(data.clanSlots || []);
       setBattlemodes(data.battlemodes || []);
+      setRawApiData(data.rawApiResponse || null);
       setDataError(null);
     } catch (err) { setDataError(err.message); }
     setDataLoading(false);
@@ -460,6 +509,27 @@ function App() {
         <div className="w-8 h-8 border-3 border-slate-600 border-t-indigo-500 rounded-full animate-spin"></div>
         <p className="text-slate-400 text-sm font-semibold">Loading NARP Database...</p>
         {dataError && <p className="text-red-400 text-xs">Error: {dataError}</p>}
+      </div>
+    );
+  }
+
+  // Show empty state when no data is cached
+  if (jutsus.length === 0 && battlemodes.length === 0 && clanSlots.length === 0) {
+    return (
+      <div className="w-full h-screen bg-slate-900 flex flex-col items-center justify-center gap-4">
+        <Database size={48} className="text-slate-500" />
+        <p className="text-slate-300 text-lg font-semibold">No Data Available</p>
+        {dataError && <p className="text-red-400 text-sm">Error: {dataError}</p>}
+        {currentUser?.role === 'admin' ? (
+          <div className="text-center">
+            <p className="text-slate-400 text-sm mb-3">Click below to fetch data from the database.</p>
+            <button onClick={handleForceRefresh} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 mx-auto transition-colors">
+              <RefreshCw size={14} /> Refresh Data
+            </button>
+          </div>
+        ) : (
+          <p className="text-slate-400 text-sm">An admin needs to refresh the data. Please check back later.</p>
+        )}
       </div>
     );
   }
@@ -671,8 +741,7 @@ function App() {
 
   const renderBattlemodes = () => {
     const availableCount = battlemodes.filter(bm => bm.available).length;
-    const limitedCount = battlemodes.filter(bm => bm.limitedSlots).length;
-    const unavailableCount = battlemodes.filter(bm => bm.limitedSlots && !bm.available).length;
+    const unavailableCount = battlemodes.filter(bm => !bm.available).length;
 
     return (
       <div className="flex-1 overflow-y-auto bg-slate-100 pb-10">
@@ -690,12 +759,6 @@ function App() {
                 <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
                 <span className="text-sm font-bold text-emerald-300">{availableCount} Available</span>
               </div>
-              {limitedCount > 0 && (
-                <div className="bg-amber-500/20 border border-amber-500/30 rounded-xl px-4 py-2 flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-amber-400"></div>
-                  <span className="text-sm font-bold text-amber-300">{limitedCount} Limited</span>
-                </div>
-              )}
               {unavailableCount > 0 && (
                 <div className="bg-red-500/20 border border-red-500/30 rounded-xl px-4 py-2 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-red-400"></div>
@@ -736,13 +799,14 @@ function App() {
                     {bm.nature && bm.nature.split(',').map(n => n.trim()).filter(Boolean).map(n => (
                       <span key={n} className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getNatureColor(n)}`}>{n}</span>
                     ))}
-                    {bm.limitedSlots && (
+                    {bm.limitedSlots ? (
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 ${bm.available ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 border border-red-200'}`}>
                         <AlertCircle size={10} /> {bm.available ? 'Available' : 'Unavailable'}
                       </span>
-                    )}
-                    {!bm.limitedSlots && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-sky-100 text-sky-800 border border-sky-200">Unlimited</span>
+                    ) : (
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 ${bm.available ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 border border-red-200'}`}>
+                        {bm.available ? 'Available' : 'Unavailable'}
+                      </span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-3">
@@ -761,7 +825,14 @@ function App() {
             ))}
           </div>
 
-          {filteredBattlemodes.length === 0 && (
+          {filteredBattlemodes.length === 0 && battlemodes.length === 0 && (
+            <div className="text-center py-16">
+              <AlertCircle size={40} className="text-amber-400 mx-auto mb-3" />
+              <p className="text-slate-600 font-semibold mb-2">No battlemode data available.</p>
+              <p className="text-slate-400 text-sm max-w-md mx-auto">The Google Apps Script API is not returning battlemode data. Make sure the Apps Script includes a <code className="bg-slate-200 px-1 rounded">"battlemodes"</code> array in its JSON response.</p>
+            </div>
+          )}
+          {filteredBattlemodes.length === 0 && battlemodes.length > 0 && (
             <div className="text-center py-16">
               <AlertCircle size={40} className="text-slate-300 mx-auto mb-3" />
               <p className="text-slate-500 font-semibold">No battlemodes match your filters.</p>
@@ -840,7 +911,12 @@ function App() {
                     </div>
                     <div><p className="font-bold text-slate-700">{user.email}</p><p className="text-[10px] font-bold uppercase text-slate-400 mt-0.5">{user.role}</p></div>
                   </div>
-                  <button onClick={() => handleUpdateUserStatus(user.uid, 'denied')} className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold">Revoke</button>
+                  {/* Only super admin can revoke other admins; any admin can revoke non-admins */}
+                  {(user.role !== 'admin' || currentUser?.email === SUPER_ADMIN_EMAIL) ? (
+                    <button onClick={() => handleUpdateUserStatus(user.uid, 'denied')} className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold">Revoke</button>
+                  ) : (
+                    <span className="text-slate-300 px-3 py-1.5 text-xs font-bold" title="Only the super admin can revoke other admins">Protected</span>
+                  )}
                 </div>
                 {user.role === 'faction' && (
                   <div className="mt-4 pt-4 border-t border-slate-100">
@@ -880,6 +956,112 @@ function App() {
     );
   };
 
+  const renderAdminData = () => {
+    const apiKeys = rawApiData ? Object.keys(rawApiData).filter(k => k !== '_fetchedAt') : [];
+    const fetchedAt = rawApiData?._fetchedAt || 'N/A';
+
+    const renderDataSection = (key) => {
+      const data = rawApiData[key];
+      if (Array.isArray(data)) {
+        if (data.length === 0) return <p className="text-sm text-slate-400 italic">Empty array (0 items)</p>;
+        return (
+          <div className="overflow-auto max-h-[70vh]">
+            <p className="text-xs text-slate-500 mb-2">{data.length} items</p>
+            <table className="w-full text-xs border-collapse">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-slate-100">
+                  {Object.keys(data[0]).map(col => (
+                    <th key={col} className="border border-slate-200 px-2 py-1 text-left font-bold text-slate-600 whitespace-nowrap">{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((row, i) => (
+                  <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                    {Object.values(row).map((val, j) => (
+                      <td key={j} className="border border-slate-200 px-2 py-1 text-slate-700 max-w-[200px] truncate" title={String(val)}>{String(val)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      } else if (typeof data === 'object' && data !== null) {
+        return (
+          <pre className="bg-slate-50 p-3 rounded-lg text-xs text-slate-700 overflow-x-auto max-h-60 overflow-y-auto border border-slate-200">{JSON.stringify(data, null, 2)}</pre>
+        );
+      } else {
+        return <p className="text-sm text-slate-700">{String(data)}</p>;
+      }
+    };
+
+    return (
+      <div className="flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 pb-32">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-6 bg-slate-800 text-white p-6 rounded-2xl flex items-center gap-4 shadow-lg">
+            <Database size={32} className="text-cyan-400" />
+            <div>
+              <h2 className="text-2xl font-bold">API Data Inspector</h2>
+              <p className="text-sm text-slate-300 mt-1">Raw data extracted from the Google Apps Script API.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs text-slate-500">
+              Fetched at: <span className="font-mono">{fetchedAt}</span>
+            </div>
+            <button onClick={handleForceRefresh} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg"><RefreshCw size={12} /> Force Refresh</button>
+          </div>
+
+          {!rawApiData ? (
+            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
+              <AlertCircle size={40} className="text-amber-400 mx-auto mb-3" />
+              <p className="text-slate-600 font-semibold">No raw API data available.</p>
+              <p className="text-slate-400 text-sm mt-1">Try refreshing the data.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <h3 className="text-sm font-bold text-slate-700 mb-2">API Response Keys</h3>
+                <div className="flex flex-wrap gap-2">
+                  {apiKeys.map(key => {
+                    const val = rawApiData[key];
+                    const count = Array.isArray(val) ? val.length : typeof val === 'object' && val !== null ? Object.keys(val).length : 1;
+                    const typeLabel = Array.isArray(val) ? `array[${count}]` : typeof val === 'object' && val !== null ? `object{${count}}` : typeof val;
+                    return (
+                      <span key={key} className="bg-slate-100 border border-slate-200 px-3 py-1 rounded-full text-xs font-mono">
+                        <span className="font-bold text-slate-800">{key}</span>
+                        <span className="text-slate-400 ml-1">({typeLabel})</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {apiKeys.map(key => (
+                <details key={key} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <summary className="p-4 cursor-pointer hover:bg-slate-50 transition-colors flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-800">{key}</span>
+                      <span className="text-xs text-slate-400 font-mono">
+                        {Array.isArray(rawApiData[key]) ? `${rawApiData[key].length} items` : typeof rawApiData[key]}
+                      </span>
+                    </div>
+                    <ChevronDown size={16} className="text-slate-400" />
+                  </summary>
+                  <div className="p-4 pt-0 border-t border-slate-100">
+                    {renderDataSection(key)}
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full h-screen bg-slate-200 flex flex-col font-sans text-slate-900 overflow-hidden">
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-30 flex justify-between items-center shadow-lg shrink-0">
@@ -889,11 +1071,12 @@ function App() {
           {view === 'battlemodes' && <Swords size={18} className="text-rose-400" />}
           {view === 'login' && <Key size={18} className="text-indigo-400" />}
           {view === 'admin_dashboard' && <UsersIcon size={18} className="text-emerald-400" />}
+          {view === 'admin_data' && <Database size={18} className="text-cyan-400" />}
           <span className="hidden sm:inline">
-            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clans & Items' : view === 'battlemodes' ? 'Battlemodes' : view === 'login' ? 'Auth Portal' : 'Admin Area'}
+            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clans & Items' : view === 'battlemodes' ? 'Battlemodes' : view === 'login' ? 'Auth Portal' : view === 'admin_data' ? 'API Data' : 'Admin Area'}
           </span>
           <span className="sm:hidden">
-            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Items' : view === 'battlemodes' ? 'BM' : view === 'login' ? 'Auth' : 'Admin'}
+            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Items' : view === 'battlemodes' ? 'BM' : view === 'login' ? 'Auth' : view === 'admin_data' ? 'Data' : 'Admin'}
           </span>
         </h1>
         <div className="flex items-center gap-2">
@@ -919,6 +1102,12 @@ function App() {
                   <span className="sm:hidden"><UsersIcon size={14} /></span>
                 </button>
               )}
+              {currentUser.role === 'admin' && (
+                <button onClick={() => setView('admin_data')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'admin_data' ? 'bg-cyan-900 text-cyan-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                  <span className="hidden sm:inline">API Data</span>
+                  <span className="sm:hidden"><Database size={14} /></span>
+                </button>
+              )}
               <button onClick={handleLogout} className="text-slate-400 hover:text-white p-1.5 bg-slate-800 rounded-lg"><LogOut size={16} /></button>
             </>
           ) : (
@@ -932,6 +1121,7 @@ function App() {
       {view === 'battlemodes' && renderBattlemodes()}
       {view === 'login' && renderLogin()}
       {view === 'admin_dashboard' && currentUser?.role === 'admin' && renderAdminDashboard()}
+      {view === 'admin_data' && currentUser?.role === 'admin' && renderAdminData()}
 
       <div className="bg-slate-900 text-center py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest z-20 shrink-0 border-t border-slate-800">
         Credits: Hexagon & A Road Sign — {APP_VERSION}
