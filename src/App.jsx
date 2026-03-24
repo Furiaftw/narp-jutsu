@@ -13,9 +13,47 @@ import {
 // CONFIG
 // ============================================================
 const DATA_API_URL = '/api/data';
+const ADMIN_API_URL = '/api/db-admin';
 const CACHE_KEY = 'narp_db_cache_v8';
 const APP_VERSION = 'v4.1';
 const SUPER_ADMIN_EMAIL = 'grisales4000@gmail.com';
+
+const MANAGE_TABLES = {
+  jutsus: { label: 'Jutsus', fields: [
+    { key: 'name', label: 'Ability Name', required: true },
+    { key: 'nature', label: 'Nature Type' },
+    { key: 'rank', label: 'Rank' },
+    { key: 'cost', label: 'Cost' },
+    { key: 'types', label: 'Jutsu Types' },
+    { key: 'origin', label: 'Origin' },
+    { key: 'specialization', label: 'Specialization' },
+    { key: 'doc_link', label: 'Doc Link' },
+    { key: 'bloodline', label: 'Bloodline' },
+    { key: 'conditions', label: 'Conditions' },
+    { key: 'secret_faction', label: 'Secret Faction' },
+  ]},
+  battlemodes: { label: 'Battlemodes', fields: [
+    { key: 'name', label: 'Name', required: true },
+    { key: 'category', label: 'Category (Primary/Secondary/Tertiary)' },
+    { key: 'bloodline', label: 'Bloodline/Hidden' },
+    { key: 'nature', label: 'Nature(s)' },
+    { key: 'doc_link', label: 'Doc Link' },
+    { key: 'limited', label: 'Limited (Yes/No)' },
+    { key: 'available', label: 'Available' },
+  ]},
+  clan_slots: { label: 'Clan Slots', fields: [
+    { key: 'name', label: 'Name', required: true },
+    { key: 'available', label: 'Available' },
+    { key: 'doc_link', label: 'Doc Link' },
+  ]},
+  bloodlines: { label: 'Bloodlines', fields: [
+    { key: 'category', label: 'Category', required: true },
+    { key: 'name', label: 'Name', required: true },
+  ]},
+  factions: { label: 'Factions', fields: [
+    { key: 'name', label: 'Name', required: true },
+  ]},
+};
 
 // ============================================================
 // ICONS
@@ -46,6 +84,10 @@ const UserCheck = (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6
 const Swords = (p) => <Icon {...p} path={<><path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="m16 16 4 4" /><path d="m19 21 2-2" /><path d="M14.5 6.5 18 3h3v3l-3.5 3.5" /><path d="m5 14 4 4" /><path d="m7 17-3 3" /><path d="m3 19 2 2" /></>} />;
 const Zap = (p) => <Icon {...p} path={<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />} />;
 const Database = (p) => <Icon {...p} path={<><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" /></>} />;
+const PlusCircle = (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="16" /><line x1="8" x2="16" y1="12" y2="12" /></>} />;
+const Edit2 = (p) => <Icon {...p} path={<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></>} />;
+const Trash2 = (p) => <Icon {...p} path={<><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></>} />;
+const Save = (p) => <Icon {...p} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></>} />;
 
 // ============================================================
 // STATIC CONSTANTS
@@ -297,6 +339,20 @@ function App() {
   const [isRequesting, setIsRequesting] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
 
+  // Manage Data panel state
+  const [manageTable, setManageTable] = useState('jutsus');
+  const [manageRows, setManageRows] = useState([]);
+  const [manageLoading, setManageLoading] = useState(false);
+  const [manageError, setManageError] = useState(null);
+  const [manageSuccess, setManageSuccess] = useState(null);
+  const [editingRow, setEditingRow] = useState(null); // null = not editing, {} = new row, {id: ...} = editing existing
+  const [formData, setFormData] = useState({});
+  const [manageSearch, setManageSearch] = useState('');
+
+  // Database seed/migrate state
+  const [seedStatus, setSeedStatus] = useState(null); // null | 'loading' | 'success' | 'error'
+  const [seedMessage, setSeedMessage] = useState('');
+
   const CLAN_CATEGORIES = useMemo(() => Object.keys(bloodlines), [bloodlines]);
   const ALL_FACTIONS = useMemo(() => factions, [factions]);
   const SPECIALIZATIONS = useMemo(() => {
@@ -323,10 +379,10 @@ function App() {
     });
   }, [battlemodes, bmSearch, fBmCategory]);
 
-  // On mount, only load from localStorage cache — no auto API fetch
+  // On mount, load from localStorage cache only — no auto-fetch (admin must refresh)
   useEffect(() => {
     const cached = loadCachedData();
-    if (cached) {
+    if (cached && cached.jutsus && cached.jutsus.length > 0) {
       setJutsus(cached.jutsus || []);
       setBloodlines(cached.bloodlines || {});
       setFactions(cached.factions || []);
@@ -334,6 +390,7 @@ function App() {
       setBattlemodes(cached.battlemodes || []);
       setRawApiData(cached.rawApiResponse || null);
     }
+    // No cache = empty state. Admin must log in and refresh data.
     setDataLoading(false);
   }, []);
 
@@ -402,7 +459,7 @@ function App() {
         if (userData.status === 'approved') {
           setCurrentUser({ uid: cred.user.uid, ...userData });
           setLoginMessage(null);
-          setView(userData.role === 'admin' ? 'admin_dashboard' : 'browser');
+          setView(userData.role === 'admin' ? 'admin_dashboard' : userData.role === 'staff' ? 'manage_data' : 'browser');
         } else if (userData.status === 'pending') {
           setLoginMessage({ type: 'pending', text: 'Account is pending admin approval.' });
           await signOut(auth);
@@ -460,7 +517,7 @@ function App() {
   };
 
   const handleForceRefresh = async () => {
-    if (currentUser?.role !== 'admin') return; // Only admins can refresh
+    if (currentUser?.role !== 'admin' && currentUser?.role !== 'staff') return; // Only admins/staff can refresh
     setDataLoading(true);
     setDataError(null);
     localStorage.removeItem(CACHE_KEY);
@@ -476,6 +533,134 @@ function App() {
     } catch (err) { setDataError(err.message); }
     setDataLoading(false);
   };
+
+  // --- Database seed/migrate (transfer data from Google Sheets to Neon DB) ---
+  const handleSeedDatabase = async () => {
+    if (currentUser?.role !== 'admin') return;
+    setSeedStatus('loading');
+    setSeedMessage('Running database migration...');
+    try {
+      // Step 1: Migrate (create tables)
+      const migrateRes = await fetch('/api/db-migrate', { method: 'POST' });
+      const migrateJson = await migrateRes.json();
+      if (!migrateRes.ok) throw new Error(migrateJson.error || 'Migration failed');
+
+      // Step 2: Seed data from Google Sheets
+      setSeedMessage('Seeding data from Google Sheets...');
+      const seedRes = await fetch('/api/db-seed', { method: 'POST' });
+      const seedJson = await seedRes.json();
+      if (!seedRes.ok) throw new Error(seedJson.error || 'Seed failed');
+
+      const stats = seedJson.stats || {};
+      setSeedStatus('success');
+      setSeedMessage(`Data transferred! Jutsus: ${stats.jutsus || 0}, Battlemodes: ${stats.battlemodes || 0}, Clan Slots: ${stats.clanSlots || 0}, Bloodlines: ${stats.bloodlines || 0}, Factions: ${stats.factions || 0}`);
+
+      // Step 3: Refresh frontend data from the new DB
+      await handleForceRefresh();
+    } catch (err) {
+      setSeedStatus('error');
+      setSeedMessage(err.message);
+    }
+  };
+
+  // --- Manage Data functions ---
+  const fetchManageRows = async (table) => {
+    setManageLoading(true);
+    setManageError(null);
+    try {
+      const res = await fetch(`${ADMIN_API_URL}?table=${table}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to fetch');
+      setManageRows(json.rows || []);
+    } catch (err) {
+      setManageError(err.message);
+      setManageRows([]);
+    }
+    setManageLoading(false);
+  };
+
+  const handleManageTableChange = (table) => {
+    setManageTable(table);
+    setEditingRow(null);
+    setFormData({});
+    setManageSearch('');
+    setManageSuccess(null);
+    setManageError(null);
+    fetchManageRows(table);
+  };
+
+  const handleStartAdd = () => {
+    const empty = {};
+    MANAGE_TABLES[manageTable].fields.forEach(f => { empty[f.key] = ''; });
+    setFormData(empty);
+    setEditingRow({});
+    setManageSuccess(null);
+    setManageError(null);
+  };
+
+  const handleStartEdit = (row) => {
+    const data = {};
+    MANAGE_TABLES[manageTable].fields.forEach(f => { data[f.key] = row[f.key] || ''; });
+    setFormData(data);
+    setEditingRow(row);
+    setManageSuccess(null);
+    setManageError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRow(null);
+    setFormData({});
+  };
+
+  const handleSaveRow = async () => {
+    setManageLoading(true);
+    setManageError(null);
+    setManageSuccess(null);
+    try {
+      const isNew = !editingRow.id;
+      const url = isNew
+        ? `${ADMIN_API_URL}?table=${manageTable}`
+        : `${ADMIN_API_URL}?table=${manageTable}&id=${editingRow.id}`;
+      const res = await fetch(url, {
+        method: isNew ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Save failed');
+      setManageSuccess(isNew ? 'Item added successfully!' : 'Item updated successfully!');
+      setEditingRow(null);
+      setFormData({});
+      await fetchManageRows(manageTable);
+    } catch (err) {
+      setManageError(err.message);
+    }
+    setManageLoading(false);
+  };
+
+  const handleDeleteRow = async (id) => {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+    setManageLoading(true);
+    setManageError(null);
+    setManageSuccess(null);
+    try {
+      const res = await fetch(`${ADMIN_API_URL}?table=${manageTable}&id=${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Delete failed');
+      setManageSuccess('Item deleted successfully!');
+      await fetchManageRows(manageTable);
+    } catch (err) {
+      setManageError(err.message);
+    }
+    setManageLoading(false);
+  };
+
+  // Load manage rows when switching to manage view
+  useEffect(() => {
+    if (view === 'manage_data' && currentUser?.role === 'admin') {
+      fetchManageRows(manageTable);
+    }
+  }, [view]);
 
   const filteredJutsus = useMemo(() => {
     const secretModeActive = fActiveSecrets.length > 0;
@@ -513,26 +698,28 @@ function App() {
     );
   }
 
-  // Show empty state when no data is cached
-  if (jutsus.length === 0 && battlemodes.length === 0 && clanSlots.length === 0) {
-    return (
-      <div className="w-full h-screen bg-slate-900 flex flex-col items-center justify-center gap-4">
-        <Database size={48} className="text-slate-500" />
-        <p className="text-slate-300 text-lg font-semibold">No Data Available</p>
-        {dataError && <p className="text-red-400 text-sm">Error: {dataError}</p>}
-        {currentUser?.role === 'admin' ? (
-          <div className="text-center">
-            <p className="text-slate-400 text-sm mb-3">Click below to fetch data from the database.</p>
-            <button onClick={handleForceRefresh} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 mx-auto transition-colors">
-              <RefreshCw size={14} /> Refresh Data
-            </button>
-          </div>
-        ) : (
-          <p className="text-slate-400 text-sm">An admin needs to refresh the data. Please check back later.</p>
-        )}
-      </div>
-    );
-  }
+  const isDataEmpty = jutsus.length === 0 && battlemodes.length === 0 && clanSlots.length === 0;
+
+  const renderEmptyState = () => (
+    <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-slate-100 p-8">
+      <Database size={48} className="text-slate-400" />
+      <p className="text-slate-700 text-lg font-semibold">No Data Available</p>
+      {dataError && <p className="text-red-500 text-sm">Error: {dataError}</p>}
+      {(currentUser?.role === 'admin' || currentUser?.role === 'staff') ? (
+        <div className="text-center">
+          <p className="text-slate-500 text-sm mb-3">Click below to fetch data from the database.</p>
+          <button onClick={handleForceRefresh} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 mx-auto transition-colors">
+            <RefreshCw size={14} /> Refresh Data
+          </button>
+        </div>
+      ) : (
+        <div className="text-center">
+          <p className="text-slate-500 text-sm">An admin needs to refresh the data first.</p>
+          {!currentUser && <p className="text-slate-400 text-xs mt-2">If you are an admin, click <strong>Login</strong> above to get started.</p>}
+        </div>
+      )}
+    </div>
+  );
 
   const renderBrowser = () => (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
@@ -848,17 +1035,18 @@ function App() {
       <div className="bg-white p-8 rounded-3xl shadow-xl border w-full max-w-sm">
         <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
           <button type="button" onClick={() => { setLoginTab('admin'); setLoginMessage(null); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex justify-center gap-2 items-center ${loginTab === 'admin' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}><Shield size={16} /> Admin</button>
+          <button type="button" onClick={() => { setLoginTab('staff'); setLoginMessage(null); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex justify-center gap-2 items-center ${loginTab === 'staff' ? 'bg-white shadow text-cyan-700' : 'text-slate-500'}`}><UserCheck size={16} /> Staff</button>
           <button type="button" onClick={() => { setLoginTab('faction'); setLoginMessage(null); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex justify-center gap-2 items-center ${loginTab === 'faction' ? 'bg-white shadow text-purple-700' : 'text-slate-500'}`}><Key size={16} /> Faction</button>
         </div>
-        <h2 className="text-2xl font-bold mb-2 text-center text-slate-800">{loginTab === 'admin' ? 'Admin Login' : 'Faction Access'}</h2>
-        <p className="text-sm text-slate-500 mb-6 text-center">{loginTab === 'admin' ? 'Log in to manage database access.' : 'Unlock hidden techniques for your faction.'}</p>
+        <h2 className="text-2xl font-bold mb-2 text-center text-slate-800">{loginTab === 'admin' ? 'Admin Login' : loginTab === 'staff' ? 'Staff Login' : 'Faction Access'}</h2>
+        <p className="text-sm text-slate-500 mb-6 text-center">{loginTab === 'admin' ? 'Log in to manage users and database.' : loginTab === 'staff' ? 'Log in to manage database content.' : 'Unlock hidden techniques for your faction.'}</p>
         {loginMessage && (
           <div className={`mb-4 p-3 rounded-lg text-sm ${loginMessage.type === 'error' ? 'bg-red-50 text-red-800' : loginMessage.type === 'pending' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`}>{loginMessage.text}</div>
         )}
         <form onSubmit={handleLoginSubmit} className="space-y-4">
           <input type="email" required placeholder="Email Address" className="w-full bg-slate-50 border py-3 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} disabled={loginLoading} />
           <input type="password" required minLength={6} placeholder={isRequesting ? "Create Password (min 6)" : "Password"} className="w-full bg-slate-50 border py-3 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} disabled={loginLoading} />
-          <button type="submit" disabled={loginLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 ${loginTab === 'admin' ? 'bg-slate-900 hover:bg-black' : 'bg-purple-600 hover:bg-purple-700'}`}>
+          <button type="submit" disabled={loginLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 ${loginTab === 'admin' ? 'bg-slate-900 hover:bg-black' : loginTab === 'staff' ? 'bg-cyan-600 hover:bg-cyan-700' : 'bg-purple-600 hover:bg-purple-700'}`}>
             {loginLoading ? 'Please wait...' : isRequesting ? 'Request Access' : 'Log In'}
           </button>
           <div className="flex justify-between items-center pt-2">
@@ -881,6 +1069,70 @@ function App() {
           <div className="mb-6 bg-emerald-600 text-white p-6 rounded-2xl flex items-center gap-4 shadow-lg">
             <UsersIcon size={32} />
             <div><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-sm text-emerald-100 mt-1">Manage user accounts and faction access.</p></div>
+          </div>
+
+          {/* Database Transfer Section */}
+          <div className="mb-8 bg-white border border-slate-200 shadow-sm rounded-2xl p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="bg-cyan-100 p-2 rounded-full text-cyan-600"><Database size={20} /></div>
+              <div>
+                <h3 className="font-bold text-slate-800">Transfer Database Data</h3>
+                <p className="text-xs text-slate-500">Import data from Google Sheets into the Neon database. This will create tables if needed and seed all data.</p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <button
+                onClick={handleSeedDatabase}
+                disabled={seedStatus === 'loading'}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${seedStatus === 'loading' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
+              >
+                <RefreshCw size={16} className={seedStatus === 'loading' ? 'animate-spin' : ''} />
+                {seedStatus === 'loading' ? 'Transferring...' : 'Transfer Data from Google Sheets'}
+              </button>
+              <button
+                onClick={handleForceRefresh}
+                disabled={dataLoading}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              >
+                <RefreshCw size={16} className={dataLoading ? 'animate-spin' : ''} />
+                Refresh Frontend Data
+              </button>
+            </div>
+            {seedMessage && (
+              <div className={`mt-3 text-sm font-medium px-3 py-2 rounded-lg ${seedStatus === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : seedStatus === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+                {seedMessage}
+              </div>
+            )}
+          </div>
+
+          {/* How to Add Admins & Staff Guide */}
+          <div className="mb-8 bg-white border border-slate-200 shadow-sm rounded-2xl p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="bg-indigo-100 p-2 rounded-full text-indigo-600"><BookOpen size={20} /></div>
+              <div>
+                <h3 className="font-bold text-slate-800">How to Add Admins & Staff</h3>
+                <p className="text-xs text-slate-500">Role guide and access management instructions.</p>
+              </div>
+            </div>
+            <div className="space-y-3 text-sm text-slate-700">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <p className="font-bold text-slate-800 mb-1">Step 1: User Registers</p>
+                <p>New users visit the site, click <strong>Login</strong>, choose their role tab (<strong>Admin</strong>, <strong>Staff</strong>, or <strong>Faction</strong>), click "Need access? Register", and create an account. They will appear in the <strong>Pending</strong> list below.</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <p className="font-bold text-slate-800 mb-1">Step 2: You Approve Them</p>
+                <p>Find them in the <strong>Pending</strong> section and click <strong>Approve</strong>. Their role is whatever tab they chose when registering (Admin, Staff, or Faction). You can <strong>Deny</strong> or <strong>Revoke</strong> access at any time.</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <p className="font-bold text-slate-800 mb-2">Role Permissions:</p>
+                <ul className="space-y-1 text-xs">
+                  <li className="flex items-center gap-2"><Shield size={14} className="text-indigo-600 shrink-0" /> <strong>Admin</strong> — Full access: manage users, manage data, refresh/transfer data, view API data.</li>
+                  <li className="flex items-center gap-2"><UserCheck size={14} className="text-cyan-600 shrink-0" /> <strong>Staff</strong> — Can manage data (add/edit/delete items) and view API data. Cannot manage users.</li>
+                  <li className="flex items-center gap-2"><Key size={14} className="text-purple-600 shrink-0" /> <strong>Faction</strong> — Can view secret faction jutsus assigned to them. No editing access.</li>
+                </ul>
+              </div>
+              <p className="text-xs text-slate-500">Only the super admin ({SUPER_ADMIN_EMAIL}) can revoke other admins.</p>
+            </div>
           </div>
 
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Pending ({pendingUsers.length})</h3>
@@ -906,8 +1158,8 @@ function App() {
               <div key={user.uid} className="bg-white border border-slate-200 shadow-sm rounded-xl p-4 md:p-5">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${user.role === 'admin' ? 'bg-indigo-100 text-indigo-600' : 'bg-purple-100 text-purple-600'}`}>
-                      {user.role === 'admin' ? <Shield size={20} /> : <Key size={20} />}
+                    <div className={`p-2 rounded-full ${user.role === 'admin' ? 'bg-indigo-100 text-indigo-600' : user.role === 'staff' ? 'bg-cyan-100 text-cyan-600' : 'bg-purple-100 text-purple-600'}`}>
+                      {user.role === 'admin' ? <Shield size={20} /> : user.role === 'staff' ? <UserCheck size={20} /> : <Key size={20} />}
                     </div>
                     <div><p className="font-bold text-slate-700">{user.email}</p><p className="text-[10px] font-bold uppercase text-slate-400 mt-0.5">{user.role}</p></div>
                   </div>
@@ -1062,6 +1314,154 @@ function App() {
     );
   };
 
+  const renderManageData = () => {
+    const tableConfig = MANAGE_TABLES[manageTable];
+    const filteredManageRows = manageSearch.trim()
+      ? manageRows.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(manageSearch.toLowerCase())))
+      : manageRows;
+
+    return (
+      <div className="flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 pb-32">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-6 bg-indigo-700 text-white p-6 rounded-2xl flex items-center gap-4 shadow-lg">
+            <Edit2 size={32} className="text-indigo-200" />
+            <div>
+              <h2 className="text-2xl font-bold">Manage Data</h2>
+              <p className="text-sm text-indigo-200 mt-1">Add, edit, or delete items directly in the Neon database.</p>
+            </div>
+          </div>
+
+          {/* Table selector */}
+          <div className="flex items-center gap-2 overflow-x-auto flex-nowrap pb-1 scrollbar-hide mb-4">
+            {Object.entries(MANAGE_TABLES).map(([key, cfg]) => (
+              <button key={key} onClick={() => handleManageTableChange(key)} className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap border transition-colors ${manageTable === key ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Success/Error messages */}
+          {manageSuccess && (
+            <div className="mb-4 p-3 rounded-lg text-sm bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-2">
+              <CheckCircle size={16} /> {manageSuccess}
+            </div>
+          )}
+          {manageError && (
+            <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-800 border border-red-200 flex items-center gap-2">
+              <AlertCircle size={16} /> {manageError}
+            </div>
+          )}
+
+          {/* Add/Edit Form */}
+          {editingRow !== null && (
+            <div className="mb-6 bg-white rounded-2xl border border-indigo-200 shadow-md p-6">
+              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                {editingRow.id ? <><Edit2 size={18} /> Edit {tableConfig.label.slice(0, -1)}</> : <><PlusCircle size={18} /> Add New {tableConfig.label.slice(0, -1)}</>}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {tableConfig.fields.map(field => (
+                  <div key={field.key}>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                      {field.label} {field.required && <span className="text-red-500">*</span>}
+                    </label>
+                    <input
+                      type="text"
+                      value={formData[field.key] || ''}
+                      onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                      className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder={field.label}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button
+                  onClick={handleSaveRow}
+                  disabled={manageLoading || tableConfig.fields.filter(f => f.required).some(f => !formData[f.key]?.trim())}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
+                >
+                  <Save size={16} /> {editingRow.id ? 'Update' : 'Add'}
+                </button>
+                <button onClick={handleCancelEdit} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm font-bold transition-colors">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Toolbar */}
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="text-xs font-bold text-slate-400 uppercase">{filteredManageRows.length} of {manageRows.length} {tableConfig.label}</div>
+              <button onClick={handleStartAdd} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors">
+                <PlusCircle size={14} /> Add New
+              </button>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
+              <input
+                type="text"
+                placeholder={`Search ${tableConfig.label.toLowerCase()}...`}
+                className="bg-white border border-slate-200 rounded-lg py-2 pl-8 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+                value={manageSearch}
+                onChange={(e) => setManageSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Table */}
+          {manageLoading && manageRows.length === 0 ? (
+            <div className="text-center py-16">
+              <div className="w-8 h-8 border-3 border-slate-300 border-t-indigo-500 rounded-full animate-spin mx-auto mb-3"></div>
+              <p className="text-slate-400 text-sm">Loading data...</p>
+            </div>
+          ) : filteredManageRows.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200">
+              <Database size={40} className="text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500 font-semibold">{manageRows.length === 0 ? `No ${tableConfig.label.toLowerCase()} in the database yet.` : 'No results match your search.'}</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase w-16">ID</th>
+                      {tableConfig.fields.map(f => (
+                        <th key={f.key} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase whitespace-nowrap">{f.label}</th>
+                      ))}
+                      <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase w-28">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredManageRows.map((row) => (
+                      <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-xs text-slate-400 font-mono">{row.id}</td>
+                        {tableConfig.fields.map(f => (
+                          <td key={f.key} className="px-4 py-3 text-slate-700 max-w-[200px] truncate" title={row[f.key] || ''}>
+                            {row[f.key] || <span className="text-slate-300">—</span>}
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => handleStartEdit(row)} className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 transition-colors" title="Edit">
+                              <Edit2 size={14} />
+                            </button>
+                            <button onClick={() => handleDeleteRow(row.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Delete">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full h-screen bg-slate-200 flex flex-col font-sans text-slate-900 overflow-hidden">
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-30 flex justify-between items-center shadow-lg shrink-0">
@@ -1072,11 +1472,12 @@ function App() {
           {view === 'login' && <Key size={18} className="text-indigo-400" />}
           {view === 'admin_dashboard' && <UsersIcon size={18} className="text-emerald-400" />}
           {view === 'admin_data' && <Database size={18} className="text-cyan-400" />}
+          {view === 'manage_data' && <Edit2 size={18} className="text-indigo-400" />}
           <span className="hidden sm:inline">
-            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clans & Items' : view === 'battlemodes' ? 'Battlemodes' : view === 'login' ? 'Auth Portal' : view === 'admin_data' ? 'API Data' : 'Admin Area'}
+            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clans & Items' : view === 'battlemodes' ? 'Battlemodes' : view === 'login' ? 'Auth Portal' : view === 'admin_data' ? 'API Data' : view === 'manage_data' ? 'Manage Data' : 'Admin Area'}
           </span>
           <span className="sm:hidden">
-            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Items' : view === 'battlemodes' ? 'BM' : view === 'login' ? 'Auth' : view === 'admin_data' ? 'Data' : 'Admin'}
+            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Items' : view === 'battlemodes' ? 'BM' : view === 'login' ? 'Auth' : view === 'admin_data' ? 'Data' : view === 'manage_data' ? 'Manage' : 'Admin'}
           </span>
         </h1>
         <div className="flex items-center gap-2">
@@ -1102,26 +1503,33 @@ function App() {
                   <span className="sm:hidden"><UsersIcon size={14} /></span>
                 </button>
               )}
-              {currentUser.role === 'admin' && (
+              {(currentUser.role === 'admin' || currentUser.role === 'staff') && (
                 <button onClick={() => setView('admin_data')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'admin_data' ? 'bg-cyan-900 text-cyan-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
                   <span className="hidden sm:inline">API Data</span>
                   <span className="sm:hidden"><Database size={14} /></span>
                 </button>
               )}
+              {(currentUser.role === 'admin' || currentUser.role === 'staff') && (
+                <button onClick={() => setView('manage_data')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'manage_data' ? 'bg-indigo-700 text-indigo-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                  <span className="hidden sm:inline">Manage</span>
+                  <span className="sm:hidden"><Edit2 size={14} /></span>
+                </button>
+              )}
               <button onClick={handleLogout} className="text-slate-400 hover:text-white p-1.5 bg-slate-800 rounded-lg"><LogOut size={16} /></button>
             </>
           ) : (
-            <button onClick={() => setView('login')} className="text-slate-300 hover:text-white flex items-center gap-1.5 text-xs font-bold bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg transition-colors hover:bg-slate-700"><Shield size={14} /><span className="hidden sm:inline">Login</span></button>
+            <button onClick={() => setView('login')} className="text-white flex items-center gap-1.5 text-xs font-bold bg-indigo-600 border border-indigo-500 px-3 py-2 rounded-lg transition-colors hover:bg-indigo-500"><Shield size={14} />Login</button>
           )}
         </div>
       </div>
 
-      {view === 'browser' && renderBrowser()}
-      {view === 'clan_slots' && renderClanSlots()}
-      {view === 'battlemodes' && renderBattlemodes()}
+      {view === 'browser' && (isDataEmpty ? renderEmptyState() : renderBrowser())}
+      {view === 'clan_slots' && (isDataEmpty ? renderEmptyState() : renderClanSlots())}
+      {view === 'battlemodes' && (isDataEmpty ? renderEmptyState() : renderBattlemodes())}
       {view === 'login' && renderLogin()}
       {view === 'admin_dashboard' && currentUser?.role === 'admin' && renderAdminDashboard()}
-      {view === 'admin_data' && currentUser?.role === 'admin' && renderAdminData()}
+      {view === 'admin_data' && (currentUser?.role === 'admin' || currentUser?.role === 'staff') && renderAdminData()}
+      {view === 'manage_data' && (currentUser?.role === 'admin' || currentUser?.role === 'staff') && renderManageData()}
 
       <div className="bg-slate-900 text-center py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest z-20 shrink-0 border-t border-slate-800">
         Credits: Hexagon & A Road Sign — {APP_VERSION}
