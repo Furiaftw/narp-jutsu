@@ -175,28 +175,27 @@ async function fetchSheetData() {
 
   // Process battlemodes from API
   const battlemodes = (json.battlemodes || []).map((row, idx) => {
-    const name = row['Battlemode Name'] || row['Name'] || '';
+    const name = row['Name'] || row['Battlemode Name'] || '';
     if (!name) return null;
-    const category = row['Category'] || '';
-    const chakraCost = row['Chakra Cost Per Turn'] || '';
-    const clan = row['Bloodline/KKG/Clan'] || row['Clan'] || row['Bloodline'] || '';
-    const nature = row['Nature'] || '';
-    const link = row['Doc Link'] || row['Link'] || '';
-    const limitedSlotsVal = (row['Limited Slots'] || '').toLowerCase();
-    const hasLimitedSlots = limitedSlotsVal === 'yes';
-    const availableVal = (row['Available'] || row['Availability'] || '').toLowerCase();
-    const isAvailable = hasLimitedSlots ? availableVal !== 'unavailable' : true;
+    const category = row['Type'] || row['Category'] || '';
+    const clan = row['Bloodline/Hidden'] || row['Bloodline/KKG/Clan'] || row['Clan'] || '';
+    const nature = row['Nature(s)'] || row['Nature'] || '';
+    const link = row['Doc'] || row['Doc Link'] || row['Link'] || '';
+    const limitedVal = (row['Limited'] || row['Limited Slots'] || '').toLowerCase();
+    const hasLimitedSlots = limitedVal === 'yes';
+    const availableSlot = row['AvailableSlot'] || '';
+    const isAvailable = hasLimitedSlots ? (!!availableSlot && availableSlot !== '0') : true;
 
     return {
       _id: `bm-${idx}`,
       name,
       category,
-      chakraCost,
       clan,
       nature,
       link,
       limitedSlots: hasLimitedSlots,
       available: isAvailable,
+      availableSlot: hasLimitedSlots ? availableSlot : null,
     };
   }).filter(Boolean);
 
@@ -747,13 +746,7 @@ function App() {
                     {bm.clan && <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200 flex items-center gap-1"><TagIcon size={12} /> {bm.clan}</span>}
                   </div>
                 </div>
-                <div className="bg-slate-50 border-t border-slate-100 px-4 py-3 flex items-center justify-between mt-auto">
-                  <div>
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">Chakra / Turn</div>
-                    <div className="text-sm font-black text-indigo-600">{bm.category === 'Tertiary' ? 'None' : (bm.chakraCost || '-')}</div>
-                  </div>
-                </div>
-                <div className="p-4 pt-0 bg-slate-50 border-t border-slate-100 flex gap-2 pt-3">
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2 mt-auto">
                   {bm.link && bm.link !== 'Link' ? (
                     <a href={bm.link} target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-slate-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-sm transition-colors"><ExternalLink size={16} /> Doc</a>
                   ) : (
