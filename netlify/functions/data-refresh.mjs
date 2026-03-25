@@ -11,37 +11,32 @@ export default async (req) => {
       status: 204,
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type',
       },
     });
   }
 
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-  };
-
-  try {
-    // Try to serve from Netlify Blobs cache first
-    const store = getStore(BLOB_STORE);
-    const cached = await store.get(BLOB_KEY);
-    if (cached) {
-      return new Response(cached, { status: 200, headers });
-    }
-  } catch (e) {
-    console.log('[data] Blob cache miss or error:', e.message);
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
   }
 
-  // No cache exists — fall back to direct DB query so initial setup works
   const databaseUrl = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
   if (!databaseUrl) {
     return new Response(JSON.stringify({ error: 'Database URL not configured' }), {
-      status: 500, headers,
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   }
 
   const sql = neon(databaseUrl);
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+  };
 
   try {
     const safeQuery = async (query) => {
@@ -122,14 +117,20 @@ export default async (req) => {
       _timestamp: new Date().toISOString(),
     };
 
-    return new Response(JSON.stringify(response), { status: 200, headers });
+    const responseJson = JSON.stringify(response);
+
+    // Store in Netlify Blobs so all users get this data from /api/data
+    const store = getStore(BLOB_STORE);
+    await store.set(BLOB_KEY, responseJson);
+
+    return new Response(responseJson, { status: 200, headers });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message, hint: 'If tables do not exist, call POST /api/db-migrate first, then POST /api/db-seed.' }), {
+    return new Response(JSON.stringify({ error: error.message }), {
       status: 500, headers,
     });
   }
 };
 
 export const config = {
-  path: '/api/data',
+  path: '/api/data-refresh',
 };

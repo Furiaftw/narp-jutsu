@@ -7,12 +7,6 @@
   node_bundler = "esbuild"
 
 [build.environment]
-  VITE_FIREBASE_API_KEY = "AIzaSyCLBEWiRq9RPR8u_NkptLpj2Y8ybOHljHw"
-  VITE_FIREBASE_AUTH_DOMAIN = "narp-jutsu-db.firebaseapp.com"
-  VITE_FIREBASE_PROJECT_ID = "narp-jutsu-db"
-  VITE_FIREBASE_STORAGE_BUCKET = "narp-jutsu-db.firebasestorage.app"
-  VITE_FIREBASE_MESSAGING_SENDER_ID = "294205399255"
-  VITE_FIREBASE_APP_ID = "1:294205399255:web:5c3d0f55485db6428d1092"
   VITE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxJepmT3RAyAHb3NMe2z67iQn8UHr8HJXQgLfn0HJg0dzKUfth6TEajvpgAgu5cWbVctg/exec"
   SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
 
