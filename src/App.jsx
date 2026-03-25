@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { login as identityLogin, signup as identitySignup, logout as identityLogout, getUser, onAuthChange, handleAuthCallback, AuthError } from '@netlify/identity';
+import { login as identityLogin, logout as identityLogout, getUser, onAuthChange, handleAuthCallback, AuthError } from '@netlify/identity';
 
 // Map PostgreSQL snake_case user row to camelCase for frontend
 const mapUser = (row) => row ? ({
@@ -761,12 +761,17 @@ function App() {
 
     try {
       if (isRequesting) {
-        // Register via Netlify Identity
-        const newUser = await identitySignup(email, passwordInput);
-        setLoginMessage({ type: 'success', text: 'Account registered! Pending admin approval. You can log in shortly.' });
-        if (newUser.emailVerified) {
-          await identityLogout();
+        // Request access via server-side admin API so it works even when public signup is disabled.
+        const res = await fetch('/api/identity-request-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: passwordInput }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Unable to request access.');
         }
+        setLoginMessage({ type: data.status === 'approved' ? 'success' : 'pending', text: data.message || 'Access request submitted.' });
         setIsRequesting(false);
         setPasswordInput('');
       } else {
@@ -797,7 +802,7 @@ function App() {
         const lowerMsg = (err.message || '').toLowerCase();
         let msg;
         if (lowerMsg.includes('email not confirmed') || lowerMsg.includes('not confirmed')) {
-          msg = 'Email not yet confirmed. Please wait a moment and try again, or re-register with the same email.';
+          msg = 'Email not yet confirmed. Use "Need access? Register" with the same email to repair the account, then log in again.';
         } else {
           msg = {
             422: 'Invalid input. Check your email and password (min 6 characters).',
