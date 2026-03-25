@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { ensureSchema } from './db-ensure-schema.mjs';
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json',
@@ -24,6 +25,7 @@ export default async (req) => {
   }
 
   const sql = neon(databaseUrl);
+  await ensureSchema(sql);
   const url = new URL(req.url);
   const action = url.searchParams.get('action');
 
