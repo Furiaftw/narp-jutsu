@@ -1,11 +1,8 @@
 import { neon } from '@neondatabase/serverless';
-import { getUser } from '@netlify/identity';
+import { getAuthUser, SUPER_ADMIN_EMAIL, ensureUsersTable } from './lib/auth.mjs';
 
-const SUPER_ADMIN_EMAIL = 'grisales4000@gmail.com';
-
-async function getRequester(sql, user) {
-  if (!user) return null;
-  const rows = await sql`SELECT * FROM users WHERE id = ${user.id}`;
+async function getRequester(sql, uid) {
+  const rows = await sql`SELECT * FROM users WHERE id = ${uid}`;
   return rows[0] || null;
 }
 
@@ -16,13 +13,14 @@ export default async (req) => {
       return new Response(JSON.stringify({ error: 'Database not configured' }), { status: 500 });
     }
 
-    const user = await getUser();
-    if (!user) {
+    const payload = getAuthUser(req);
+    if (!payload) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
 
     const sql = neon(databaseUrl);
-    const requester = await getRequester(sql, user);
+    await ensureUsersTable(sql);
+    const requester = await getRequester(sql, payload.uid);
     if (!requester || (requester.role !== 'admin' && requester.role !== 'staff')) {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
     }
@@ -52,7 +50,6 @@ export default async (req) => {
 
       if (action === 'update_role') {
         const { role } = body;
-        // Only super admin can promote to admin
         const target = (await sql`SELECT * FROM users WHERE id = ${uid}`)[0];
         if (!target) {
           return new Response(JSON.stringify({ error: 'User not found' }), { status: 404 });
@@ -60,7 +57,6 @@ export default async (req) => {
         if (role === 'admin' && requester.email !== SUPER_ADMIN_EMAIL) {
           return new Response(JSON.stringify({ error: 'Only super admin can promote to admin' }), { status: 403 });
         }
-        // Cannot demote admins unless super admin
         if (target.role === 'admin' && requester.email !== SUPER_ADMIN_EMAIL) {
           return new Response(JSON.stringify({ error: 'Only super admin can demote admins' }), { status: 403 });
         }

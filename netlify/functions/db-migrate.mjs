@@ -121,11 +121,12 @@ export default async (req) => {
     // Add columns if missing for pending_entries
     await sql`ALTER TABLE pending_entries ADD COLUMN IF NOT EXISTS admin_approval_pending TEXT DEFAULT ''`.catch(() => {});
 
-    // Create users table for Identity user profiles
+    // Create users table for authentication
     await sql`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL,
+        password_hash TEXT,
         role TEXT NOT NULL DEFAULT 'user',
         status TEXT NOT NULL DEFAULT 'pending',
         nickname TEXT,
@@ -133,6 +134,9 @@ export default async (req) => {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `;
+
+    // Add password_hash column if missing (for existing databases)
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`.catch(() => {});
 
     // Create pending_faction_access table for faction secrets approval
     await sql`

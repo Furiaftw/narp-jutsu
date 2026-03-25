@@ -1,7 +1,5 @@
 import { neon } from '@neondatabase/serverless';
-import { getUser } from '@netlify/identity';
-
-const SUPER_ADMIN_EMAIL = 'grisales4000@gmail.com';
+import { getAuthUser, SUPER_ADMIN_EMAIL, ensureUsersTable } from './lib/auth.mjs';
 
 export default async (req) => {
   if (req.method !== 'POST') {
@@ -14,12 +12,13 @@ export default async (req) => {
   }
 
   try {
-    const user = await getUser();
-    if (!user) {
+    const payload = getAuthUser(req);
+    if (!payload) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
 
     const sql = neon(databaseUrl);
+    await ensureUsersTable(sql);
     const { targetUid } = await req.json();
 
     if (!targetUid) {
@@ -27,7 +26,7 @@ export default async (req) => {
     }
 
     // Verify the requester is an admin
-    const requesterRows = await sql`SELECT * FROM users WHERE id = ${user.id}`;
+    const requesterRows = await sql`SELECT * FROM users WHERE id = ${payload.uid}`;
     if (requesterRows.length === 0 || requesterRows[0].role !== 'admin') {
       return new Response(JSON.stringify({ error: 'Only admins can delete accounts' }), { status: 403 });
     }
@@ -48,22 +47,6 @@ export default async (req) => {
     // Non-super-admin cannot delete other admins
     if (target.role === 'admin' && requester.email !== SUPER_ADMIN_EMAIL) {
       return new Response(JSON.stringify({ error: 'Only super admin can delete admin accounts' }), { status: 403 });
-    }
-
-    // Delete from Netlify Identity using admin API
-    const identityUrl = process.env.URL || process.env.DEPLOY_URL;
-    if (identityUrl) {
-      try {
-        const adminToken = process.env.NETLIFY_IDENTITY_ADMIN_TOKEN;
-        if (adminToken) {
-          await fetch(`${identityUrl}/.netlify/identity/admin/users/${targetUid}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${adminToken}` },
-          });
-        }
-      } catch (identityErr) {
-        console.error('Identity delete error (non-fatal):', identityErr);
-      }
     }
 
     // Delete from PostgreSQL
