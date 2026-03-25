@@ -7,12 +7,12 @@ const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 /**
  * Makes an authenticated admin request to the GoTrue (Netlify Identity) API.
- * Uses the operator token from clientContext.identity, which is only available
- * in v1 (handler-style) Netlify Functions.
+ * @param {string} identityUrl - The GoTrue API base URL.
+ * @param {string|Promise<string>} identityToken - The operator/service JWT token (may be a Promise in v1 functions).
  */
-async function gotrueAdminFetch(identity, path, options = {}) {
-  const token = await identity.token;
-  const res = await fetch(`${identity.url}${path}`, {
+async function gotrueAdminFetch(identityUrl, identityToken, path, options = {}) {
+  const token = await identityToken;
+  const res = await fetch(`${identityUrl}${path}`, {
     ...options,
     headers: {
       ...options.headers,
@@ -29,12 +29,12 @@ async function gotrueAdminFetch(identity, path, options = {}) {
   return res.json();
 }
 
-async function findIdentityUserByEmail(identity, email) {
+async function findIdentityUserByEmail(identityUrl, identityToken, email) {
   let page = 1;
   const perPage = 100;
 
   while (true) {
-    const data = await gotrueAdminFetch(identity, `/admin/users?page=${page}&per_page=${perPage}`);
+    const data = await gotrueAdminFetch(identityUrl, identityToken, `/admin/users?page=${page}&per_page=${perPage}`);
     const users = data.users || [];
     const match = users.find((u) => normalizeEmail(u.email) === email);
     if (match) return match;
@@ -50,8 +50,18 @@ const handler = async (event, context) => {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
-  const identity = context.clientContext?.identity;
-  if (!identity?.url || !identity?.token) {
+  // Resolve GoTrue admin URL and token.
+  // Primary source: clientContext.identity (populated by Netlify for v1 functions when Identity is enabled).
+  // Fallback: environment variables, which must be set manually in the Netlify dashboard when the
+  // clientContext is not propagated (e.g. through certain proxy/redirect configurations).
+  const ctxIdentity = context.clientContext?.identity;
+  const identityUrl =
+    ctxIdentity?.url ||
+    (process.env.URL && `${process.env.URL}/.netlify/identity`) ||
+    (process.env.DEPLOY_URL && `${process.env.DEPLOY_URL}/.netlify/identity`);
+  const identityToken = ctxIdentity?.token || process.env.NETLIFY_IDENTITY_ADMIN_TOKEN;
+
+  if (!identityUrl || !identityToken) {
     return {
       statusCode: 500,
       body: JSON.stringify({ error: 'Identity service not available. Ensure Netlify Identity is enabled.' }),
@@ -78,17 +88,17 @@ const handler = async (event, context) => {
     const isSuperAdmin = email === SUPER_ADMIN_EMAIL;
 
     // Try to find an existing Identity user by email
-    let identityUser = await findIdentityUserByEmail(identity, email);
+    let identityUser = await findIdentityUserByEmail(identityUrl, identityToken, email);
 
     if (identityUser) {
       // User exists — update their password and force-confirm their email
-      identityUser = await gotrueAdminFetch(identity, `/admin/users/${identityUser.id}`, {
+      identityUser = await gotrueAdminFetch(identityUrl, identityToken, `/admin/users/${identityUser.id}`, {
         method: 'PUT',
         body: JSON.stringify({ password, confirm: true }),
       });
     } else {
       // Create a new Identity user (works even when public signups are disabled)
-      identityUser = await gotrueAdminFetch(identity, '/admin/users', {
+      identityUser = await gotrueAdminFetch(identityUrl, identityToken, '/admin/users', {
         method: 'POST',
         body: JSON.stringify({ email, password, confirm: true }),
       });
