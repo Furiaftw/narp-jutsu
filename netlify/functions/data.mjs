@@ -124,7 +124,7 @@ export default async (req) => {
 
     return new Response(JSON.stringify(response), { status: 200, headers });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message, hint: 'If tables do not exist, call POST /api/db-migrate first, then POST /api/db-seed.' }), {
+    return new Response(JSON.stringify({ error: error.message, hint: 'Tables are auto-created on first use via ensureSchema.' }), {
       status: 500, headers,
     });
   }

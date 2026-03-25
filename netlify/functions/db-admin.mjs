@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { ensureSchema } from './db-ensure-schema.mjs';
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json',
@@ -52,6 +53,7 @@ export default async (req) => {
 
   try {
     const sql = neon(databaseUrl);
+    await ensureSchema(sql);
     // GET — list all rows from a table
     if (req.method === 'GET') {
       const rows = await sql.query(`SELECT * FROM ${table} ORDER BY id`);

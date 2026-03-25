@@ -631,10 +631,6 @@ function App() {
   const [manageSearch, setManageSearch] = useState('');
   const [customSpecs, setCustomSpecs] = useState([]);
 
-  // Database seed/migrate state
-  const [seedStatus, setSeedStatus] = useState(null); // null | 'loading' | 'success' | 'error'
-  const [seedMessage, setSeedMessage] = useState('');
-
   // Approval system state
   const [pendingEntries, setPendingEntries] = useState([]);
   const [pendingFactionRequests, setPendingFactionRequests] = useState([]);
@@ -1065,125 +1061,18 @@ function App() {
       const json = await res.json();
       if (json.error) throw new Error(json.error);
 
-      // Process the returned data the same way fetchFreshData does
-      const bloodlines = getVal(json, 'bloodlines', 'Bloodlines') || {};
-      const factions = getVal(json, 'factions', 'Factions') || [];
-
-      const rawClanSlots = getVal(json, 'clanSlots', 'clanslots', 'clan_slots', 'ClanSlots', 'Clan Slots') || [];
-      const clanSlots = rawClanSlots.map(slot => {
-        const name = getStr(slot, 'name', 'Name', 'Clan', 'Clan Name', 'ClanName', 'Item', 'Item Name');
-        if (!name) return null;
-        const availRaw = getStr(slot, 'available', 'Available', 'Status', 'Availability', 'AvailableSlot');
-        const availLower = availRaw.toLowerCase();
-        const availBool = getVal(slot, 'available', 'Available');
-        let isAvailable;
-        if (typeof availBool === 'boolean') {
-          isAvailable = availBool;
-        } else if (['n/a','no','unavailable','closed','taken','full','0','false'].includes(availLower)) {
-          isAvailable = false;
-        } else {
-          isAvailable = true;
-        }
-        return {
-          _id: `cs-${name}`,
-          name,
-          available: isAvailable,
-          link: getStr(slot, 'link', 'Link', 'doc_link', 'Doc', 'Doc Link', 'DocLink', 'URL'),
-          slots: getStr(slot, 'Slots', 'slots'),
-        };
-      }).filter(Boolean);
-
-      const rawJutsus = getVal(json, 'jutsus', 'Jutsus') || [];
-      const jutsus = rawJutsus.map((row, idx) => {
-        const name = getStr(row, 'Ability Name', 'name', 'Name', 'jutsu_name', 'JutsuName', 'Jutsu');
-        if (!name) return null;
-        return {
-          _id: `j-${idx}`,
-          name,
-          nature: getStr(row, 'Nature Type', 'nature', 'Nature', 'element', 'Element'),
-          rank: getStr(row, 'Rank', 'rank'),
-          cost: getStr(row, 'Cost', 'cost'),
-          types: getStr(row, 'Jutsu Types', 'types', 'Type', 'jutsu_type'),
-          origin: getStr(row, 'Origin', 'origin'),
-          spec: getStr(row, 'Specialization', 'specialization', 'spec'),
-          link: getStr(row, 'Doc Link', 'doc_link', 'Doc', 'Link', 'URL'),
-          bloodline: getStr(row, 'Bloodline', 'bloodline'),
-          conditions: getStr(row, 'Conditions', 'conditions'),
-          secretFaction: getStr(row, 'Secret Faction', 'secret_faction', 'SecretFaction'),
-          staffReview: getStr(row, 'Staff Review', 'staff_review', 'StaffReview'),
-          slots: getStr(row, 'Slots', 'slots'),
-        };
-      }).filter(Boolean);
-
-      const rawBattlemodes = getVal(json, 'battlemodes', 'Battlemodes') || [];
-      const battlemodes = rawBattlemodes.map((row, idx) => {
-        const name = getStr(row, 'Name', 'name');
-        if (!name) return null;
-        const category = getStr(row, 'Type', 'type', 'category', 'Category');
-        const clan = getStr(row, 'Bloodline/Hidden', 'bloodline', 'Bloodline', 'Clan');
-        const nature = getStr(row, 'Nature(s)', 'nature', 'Nature', 'Natures');
-        const link = getStr(row, 'Doc', 'doc_link', 'Link', 'URL');
-        const limitedStr = getStr(row, 'Limited', 'limited').toLowerCase();
-        const hasLimitedSlots = limitedStr === 'yes' || limitedStr === 'true' || limitedStr === '1';
-        const availStr = getStr(row, 'Available', 'available').toLowerCase();
-        const isAvailable = availStr !== 'no' && availStr !== 'false' && availStr !== '0' && availStr !== 'n/a';
-        return {
-          _id: `bm-${idx}`,
-          name,
-          category,
-          clan,
-          nature,
-          link,
-          limitedSlots: hasLimitedSlots,
-          available: isAvailable,
-          mustLearnIC: getStr(row, 'Must Learn IC', 'must_learn_ic', 'MustLearnIC').toLowerCase() === 'yes',
-          slots: getStr(row, 'Slots', 'slots'),
-        };
-      }).filter(Boolean);
-
-      const rawApiResponse = { ...json, _fetchedAt: new Date().toISOString() };
-      const result = { jutsus, bloodlines, factions, clanSlots, battlemodes, rawApiResponse, ts: Date.now() };
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch (e) { }
-
-      setJutsus(jutsus);
-      setBloodlines(bloodlines);
-      setFactions(factions);
-      setClanSlots(clanSlots);
-      setBattlemodes(battlemodes);
-      setRawApiData(rawApiResponse);
+      // Re-fetch via the shared fetchFreshData so data is processed consistently
+      // (proper arrays for rank/types/spec, derived fields like secret, clanCat, etc.)
+      const data = await fetchFreshData();
+      setJutsus(data.jutsus);
+      setBloodlines(data.bloodlines);
+      setFactions(data.factions);
+      setClanSlots(data.clanSlots || []);
+      setBattlemodes(data.battlemodes || []);
+      setRawApiData(data.rawApiResponse || null);
       setDataError(null);
     } catch (err) { setDataError(err.message); }
     setDataLoading(false);
-  };
-
-  // --- Database migration for existing items ---
-  const handleMigrateExisting = async () => {
-    if (currentUser?.role !== 'admin') return;
-    setSeedStatus('loading');
-    setSeedMessage('Running database migration...');
-    try {
-      // Step 1: Migrate (create/update tables)
-      const migrateRes = await fetch('/api/db-migrate', { method: 'POST' });
-      const migrateJson = await migrateRes.json();
-      if (!migrateRes.ok) throw new Error(migrateJson.error || 'Migration failed');
-
-      setSeedMessage('Updating existing items...');
-
-      // Step 2: Migrate existing data to use new field formats
-      const migrateDataRes = await fetch('/api/db-migrate-data', { method: 'POST' });
-      const migrateDataJson = await migrateDataRes.json();
-      if (!migrateDataRes.ok) throw new Error(migrateDataJson.error || 'Data migration failed');
-
-      const stats = migrateDataJson.stats || {};
-      setSeedStatus('success');
-      setSeedMessage(`Migration complete! Updated: ${stats.jutsus || 0} jutsus, ${stats.battlemodes || 0} battlemodes, ${stats.clanSlots || 0} limited specs, ${stats.bloodlines || 0} bloodlines`);
-
-      // Step 3: Refresh frontend data
-      await handleForceRefresh();
-    } catch (err) {
-      setSeedStatus('error');
-      setSeedMessage(err.message);
-    }
   };
 
   // --- Manage Data functions ---
@@ -1888,20 +1777,7 @@ function App() {
                 <RefreshCw size={16} className={dataLoading ? 'animate-spin' : ''} />
                 Refresh Frontend Data
               </button>
-              <button
-                onClick={handleMigrateExisting}
-                disabled={seedStatus === 'loading'}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${seedStatus === 'loading' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}
-              >
-                <RefreshCw size={16} className={seedStatus === 'loading' ? 'animate-spin' : ''} />
-                {seedStatus === 'loading' ? 'Migrating...' : 'Migrate Existing Data'}
-              </button>
             </div>
-            {seedMessage && (
-              <div className={`mt-3 text-sm font-medium px-3 py-2 rounded-lg ${seedStatus === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : seedStatus === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
-                {seedMessage}
-              </div>
-            )}
           </div>
 
           {/* Pending Jutsu Entries Approval */}
