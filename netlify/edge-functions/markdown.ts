@@ -23,7 +23,7 @@
  */
 
 import type { Context, Config } from "@netlify/edge-functions";
-import TurndownService from "https://esm.sh/turndown@7.2.0";
+import TurndownService from "turndown";
 
 export default async function handler(req: Request, context: Context) {
   const accept = req.headers.get("accept") || "";

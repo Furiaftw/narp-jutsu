@@ -763,12 +763,9 @@ function App() {
       if (isRequesting) {
         // Register via Netlify Identity
         const newUser = await identitySignup(email, passwordInput);
+        setLoginMessage({ type: 'success', text: 'Account registered! Pending admin approval. You can log in shortly.' });
         if (newUser.emailVerified) {
-          // Autoconfirm is on — user is logged in, but still pending approval
-          setLoginMessage({ type: 'success', text: 'Account registered! Pending admin approval.' });
           await identityLogout();
-        } else {
-          setLoginMessage({ type: 'success', text: 'Account registered! Check your email to confirm, then await admin approval.' });
         }
         setIsRequesting(false);
         setPasswordInput('');
@@ -797,12 +794,18 @@ function App() {
       }
     } catch (err) {
       if (err instanceof AuthError) {
-        const msg = {
-          422: 'Invalid input. Check your email and password (min 6 characters).',
-          401: 'Invalid email or password.',
-          403: isRequesting ? 'Signups are not allowed. Contact admin.' : 'Access denied.',
-          404: 'Invalid email or password.',
-        }[err.status] || err.message;
+        const lowerMsg = (err.message || '').toLowerCase();
+        let msg;
+        if (lowerMsg.includes('email not confirmed') || lowerMsg.includes('not confirmed')) {
+          msg = 'Email not yet confirmed. Please wait a moment and try again, or re-register with the same email.';
+        } else {
+          msg = {
+            422: 'Invalid input. Check your email and password (min 6 characters).',
+            401: 'Invalid email or password.',
+            403: isRequesting ? 'Signups are not allowed. Contact admin.' : 'Access denied.',
+            404: 'Invalid email or password.',
+          }[err.status] || err.message;
+        }
         setLoginMessage({ type: 'error', text: msg });
       } else {
         setLoginMessage({ type: 'error', text: err.message || 'An error occurred.' });
