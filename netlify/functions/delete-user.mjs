@@ -13,14 +13,13 @@ export default async (req) => {
     return new Response(JSON.stringify({ error: 'Database not configured' }), { status: 500 });
   }
 
-  const user = await getUser();
-  if (!user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-  }
-
-  const sql = neon(databaseUrl);
-
   try {
+    const user = await getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+
+    const sql = neon(databaseUrl);
     const { targetUid } = await req.json();
 
     if (!targetUid) {
