@@ -42,7 +42,6 @@ export default async (req) => {
     return json({ error: 'Database URL not configured' }, 500);
   }
 
-  const sql = neon(databaseUrl);
   const url = new URL(req.url);
   const table = url.searchParams.get('table');
   const id = url.searchParams.get('id');
@@ -52,6 +51,7 @@ export default async (req) => {
   }
 
   try {
+    const sql = neon(databaseUrl);
     // GET — list all rows from a table
     if (req.method === 'GET') {
       const rows = await sql.query(`SELECT * FROM ${table} ORDER BY id`);

@@ -10,38 +10,34 @@ async function getRequester(sql, user) {
 }
 
 export default async (req) => {
-  const databaseUrl = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    return new Response(JSON.stringify({ error: 'Database not configured' }), { status: 500 });
-  }
+  try {
+    const databaseUrl = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      return new Response(JSON.stringify({ error: 'Database not configured' }), { status: 500 });
+    }
 
-  const user = await getUser();
-  if (!user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-  }
+    const user = await getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
 
-  const sql = neon(databaseUrl);
-  const requester = await getRequester(sql, user);
-  if (!requester || (requester.role !== 'admin' && requester.role !== 'staff')) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
-  }
+    const sql = neon(databaseUrl);
+    const requester = await getRequester(sql, user);
+    if (!requester || (requester.role !== 'admin' && requester.role !== 'staff')) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+    }
 
-  const url = new URL(req.url);
-  const action = url.searchParams.get('action');
+    const url = new URL(req.url);
+    const action = url.searchParams.get('action');
 
-  // GET: list all users
-  if (req.method === 'GET') {
-    try {
+    // GET: list all users
+    if (req.method === 'GET') {
       const rows = await sql`SELECT * FROM users ORDER BY created_at DESC`;
       return new Response(JSON.stringify(rows), { status: 200 });
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), { status: 500 });
     }
-  }
 
-  // PUT: update user properties
-  if (req.method === 'PUT') {
-    try {
+    // PUT: update user properties
+    if (req.method === 'PUT') {
       const body = await req.json();
       const { uid } = body;
       if (!uid) {
@@ -99,12 +95,13 @@ export default async (req) => {
       }
 
       return new Response(JSON.stringify({ error: 'Unknown action' }), { status: 400 });
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), { status: 500 });
     }
-  }
 
-  return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+  } catch (err) {
+    console.error('users-admin error:', err);
+    return new Response(JSON.stringify({ error: err.message || 'Internal server error' }), { status: 500 });
+  }
 };
 
 export const config = {
