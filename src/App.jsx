@@ -1,5 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { login as identityLogin, logout as identityLogout, getUser, onAuthChange, handleAuthCallback, oauthLogin, AuthError } from '@netlify/identity';
+
+// ── Auth Token Helpers ──────────────────────────────────────────
+const AUTH_TOKEN_KEY = 'narp_auth_token';
+function getAuthToken() { return localStorage.getItem(AUTH_TOKEN_KEY); }
+function setAuthToken(token) { localStorage.setItem(AUTH_TOKEN_KEY, token); }
+function clearAuthToken() { localStorage.removeItem(AUTH_TOKEN_KEY); }
+function authHeaders(extra = {}) {
+  const token = getAuthToken();
+  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+}
 
 // Map PostgreSQL snake_case user row to camelCase for frontend
 const mapUser = (row) => row ? ({
@@ -690,10 +699,10 @@ function App() {
     loadData();
   }, []);
 
-  // Fetch user profile from PostgreSQL
+  // Fetch user profile from PostgreSQL using auth token
   const fetchUserProfile = useCallback(async () => {
     try {
-      const res = await fetch('/api/user-profile');
+      const res = await fetch('/api/auth/session', { headers: authHeaders() });
       if (!res.ok) return null;
       const data = await res.json();
       return mapUser(data);
@@ -703,7 +712,7 @@ function App() {
   // Fetch all users for admin panel
   const fetchAllUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/users-admin');
+      const res = await fetch('/api/users-admin', { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setAllUsers(data.map(mapUser));
@@ -712,20 +721,16 @@ function App() {
     }
   }, []);
 
-  // Handle auth callbacks (email confirmation, password recovery)
-  useEffect(() => {
-    handleAuthCallback().catch(() => {});
-  }, []);
-
-  // Check auth state on mount
+  // Check auth state on mount using stored token
   useEffect(() => {
     const checkAuth = async () => {
-      const identityUser = await getUser();
-      if (identityUser) {
+      const token = getAuthToken();
+      if (token) {
         const profile = await fetchUserProfile();
         if (profile && profile.status === 'approved') {
           setCurrentUser(profile);
         } else {
+          clearAuthToken();
           setCurrentUser(null);
         }
       } else {
@@ -734,18 +739,6 @@ function App() {
       setAuthLoading(false);
     };
     checkAuth();
-
-    const unsub = onAuthChange(async (event) => {
-      if (event === 'login' || event === 'token_refresh') {
-        const profile = await fetchUserProfile();
-        if (profile && profile.status === 'approved') {
-          setCurrentUser(profile);
-        }
-      } else if (event === 'logout') {
-        setCurrentUser(null);
-      }
-    });
-    return () => unsub();
   }, [fetchUserProfile]);
 
   useEffect(() => {
@@ -761,88 +754,72 @@ function App() {
 
     try {
       if (isRequesting) {
-        // Request access via server-side admin API so it works even when public signup is disabled.
-        const res = await fetch('/api/identity-request-access', {
+        // Register a new account
+        const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password: passwordInput }),
         });
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.error || 'Unable to request access.');
+          throw new Error(data.error || 'Unable to register.');
         }
-        setLoginMessage({ type: data.status === 'approved' ? 'success' : 'pending', text: data.message || 'Access request submitted.' });
+        // If super admin, auto-login with returned token
+        if (data.token) {
+          setAuthToken(data.token);
+          const profile = mapUser(data.user);
+          setCurrentUser(profile);
+          setLoginMessage(null);
+          setView('admin_dashboard');
+        } else {
+          setLoginMessage({ type: data.status === 'approved' ? 'success' : 'pending', text: data.message || 'Account created.' });
+        }
         setIsRequesting(false);
         setPasswordInput('');
       } else {
-        // Login via Netlify Identity
-        await identityLogin(email, passwordInput);
-        const profile = await fetchUserProfile();
+        // Login with email/password
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: passwordInput }),
+        });
+        const data = await res.json();
 
-        if (!profile) {
-          setLoginMessage({ type: 'error', text: 'User profile not found. Contact admin.' });
-          await identityLogout();
+        if (!res.ok) {
+          if (data.status === 'pending') {
+            setLoginMessage({ type: 'pending', text: data.error });
+          } else {
+            throw new Error(data.error || 'Login failed.');
+          }
           return;
         }
 
-        if (profile.status === 'approved') {
-          setCurrentUser(profile);
-          setLoginMessage(null);
-          setView(profile.role === 'admin' ? 'admin_dashboard' : profile.role === 'staff' ? 'manage_data' : 'browser');
-        } else if (profile.status === 'pending') {
-          setLoginMessage({ type: 'pending', text: 'Account is pending admin approval.' });
-          await identityLogout();
-        } else {
-          setLoginMessage({ type: 'error', text: 'Access request was denied by admin.' });
-          await identityLogout();
-        }
+        setAuthToken(data.token);
+        const profile = mapUser(data.user);
+        setCurrentUser(profile);
+        setLoginMessage(null);
+        setView(profile.role === 'admin' ? 'admin_dashboard' : profile.role === 'staff' ? 'manage_data' : 'browser');
       }
     } catch (err) {
-      if (err instanceof AuthError) {
-        const lowerMsg = (err.message || '').toLowerCase();
-        let msg;
-        if (lowerMsg.includes('email not confirmed') || lowerMsg.includes('not confirmed')) {
-          msg = 'Email not yet confirmed. Use "Need access? Register" with the same email to repair the account, then log in again.';
-        } else {
-          msg = {
-            422: 'Invalid input. Check your email and password (min 6 characters).',
-            401: 'Invalid email or password.',
-            403: isRequesting ? 'Signups are not allowed. Contact admin.' : 'Access denied.',
-            404: 'Invalid email or password.',
-          }[err.status] || err.message;
-        }
-        setLoginMessage({ type: 'error', text: msg });
-      } else {
-        setLoginMessage({ type: 'error', text: err.message || 'An error occurred.' });
-      }
+      setLoginMessage({ type: 'error', text: err.message || 'An error occurred.' });
     } finally {
       setLoginLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    try { await identityLogout(); } catch {}
+  const handleLogout = () => {
+    clearAuthToken();
     setCurrentUser(null);
     setEmailInput(''); setPasswordInput('');
     setLoginMessage(null); setFActiveSecrets([]);
     setIsRequesting(false); setView('browser');
   };
 
-  const handleGoogleLogin = () => {
-    setLoginMessage(null);
-    setLoginLoading(true);
-    try {
-      oauthLogin('google');
-    } catch {
-      // oauthLogin redirects the page; the thrown error is expected
-    }
-  };
-
   const handleUpdateUserStatus = async (uid, newStatus) => {
     try {
       const res = await fetch('/api/users-admin?action=update_status', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ uid, status: newStatus })
       });
       if (!res.ok) throw new Error((await res.json()).error);
@@ -855,7 +832,7 @@ function App() {
     try {
       const res = await fetch('/api/delete-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ targetUid: uid })
       });
       const data = await res.json();
@@ -871,7 +848,7 @@ function App() {
     try {
       const res = await fetch('/api/users-admin?action=update_nickname', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ uid, nickname: nickname.trim() || null })
       });
       if (!res.ok) throw new Error((await res.json()).error);
@@ -883,7 +860,7 @@ function App() {
     try {
       const res = await fetch('/api/users-admin?action=toggle_faction', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ uid, faction })
       });
       if (!res.ok) throw new Error((await res.json()).error);
@@ -895,7 +872,7 @@ function App() {
     try {
       const res = await fetch('/api/users-admin?action=update_role', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ uid, role: newRole })
       });
       if (!res.ok) throw new Error((await res.json()).error);
@@ -1862,26 +1839,6 @@ function App() {
         <p className="text-sm text-slate-500 mb-6 text-center">{isRequesting ? 'Register for an account. An admin will approve your access.' : 'Log in to access the NARP Database.'}</p>
         {loginMessage && (
           <div className={`mb-4 p-3 rounded-lg text-sm ${loginMessage.type === 'error' ? 'bg-red-50 text-red-800' : loginMessage.type === 'pending' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`}>{loginMessage.text}</div>
-        )}
-
-        {/* Google OAuth Login */}
-        {!isRequesting && (
-          <>
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={loginLoading}
-              className="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 text-slate-700 font-semibold py-3 rounded-xl transition-colors hover:bg-slate-50 disabled:opacity-50 mb-4"
-            >
-              <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.01 24.01 0 0 0 0 21.56l7.98-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-              Sign in with Google
-            </button>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 border-t border-slate-200"></div>
-              <span className="text-xs text-slate-400 font-medium">or use email</span>
-              <div className="flex-1 border-t border-slate-200"></div>
-            </div>
-          </>
         )}
 
         <form onSubmit={handleLoginSubmit} className="space-y-4">

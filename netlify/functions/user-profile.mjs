@@ -1,7 +1,5 @@
 import { neon } from '@neondatabase/serverless';
-import { getUser } from '@netlify/identity';
-
-const SUPER_ADMIN_EMAIL = 'grisales4000@gmail.com';
+import { getAuthUser, SUPER_ADMIN_EMAIL, ensureUsersTable } from './lib/auth.mjs';
 
 export default async (req) => {
   try {
@@ -10,31 +8,22 @@ export default async (req) => {
       return new Response(JSON.stringify({ error: 'Database not configured' }), { status: 500 });
     }
 
-    const user = await getUser();
-    if (!user) {
+    const payload = getAuthUser(req);
+    if (!payload) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
 
     if (req.method === 'GET') {
       const sql = neon(databaseUrl);
-      const isSuperAdmin = user.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
-      const rows = await sql`SELECT * FROM users WHERE id = ${user.id}`;
+      await ensureUsersTable(sql);
+      const isSuperAdmin = payload.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+      const rows = await sql`SELECT * FROM users WHERE id = ${payload.uid}`;
       if (rows.length === 0) {
-        // User exists in Identity but not in DB yet (race condition with identity-signup)
-        // Create the profile now — super admin gets auto-approved with admin role
-        const role = isSuperAdmin ? 'admin' : 'user';
-        const status = isSuperAdmin ? 'approved' : 'pending';
-        await sql`
-          INSERT INTO users (id, email, role, status, allowed_factions, created_at)
-          VALUES (${user.id}, ${user.email}, ${role}, ${status}, '[]', NOW())
-          ON CONFLICT (id) DO NOTHING
-        `;
-        const newRows = await sql`SELECT * FROM users WHERE id = ${user.id}`;
-        return new Response(JSON.stringify(newRows[0] || null), { status: 200 });
+        return new Response(JSON.stringify({ error: 'User not found' }), { status: 404 });
       }
       // Ensure super admin always has admin role and approved status
       if (isSuperAdmin && (rows[0].status !== 'approved' || rows[0].role !== 'admin')) {
-        await sql`UPDATE users SET role = 'admin', status = 'approved' WHERE id = ${user.id}`;
+        await sql`UPDATE users SET role = 'admin', status = 'approved' WHERE id = ${payload.uid}`;
         rows[0].role = 'admin';
         rows[0].status = 'approved';
       }
