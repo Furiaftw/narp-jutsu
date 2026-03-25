@@ -1,13 +1,16 @@
-import { useState, useEffect, useMemo } from 'react';
-import {
-  auth, db,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  doc, getDoc, setDoc, updateDoc,
-  collection, onSnapshot, serverTimestamp
-} from './firebase';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { login as identityLogin, signup as identitySignup, logout as identityLogout, getUser, onAuthChange, handleAuthCallback, AuthError } from '@netlify/identity';
+
+// Map PostgreSQL snake_case user row to camelCase for frontend
+const mapUser = (row) => row ? ({
+  uid: row.id,
+  email: row.email,
+  role: row.role,
+  status: row.status,
+  nickname: row.nickname || null,
+  allowedFactions: (() => { try { return JSON.parse(row.allowed_factions || '[]'); } catch { return []; } })(),
+  createdAt: row.created_at,
+}) : null;
 
 // ============================================================
 // CONFIG
@@ -15,7 +18,8 @@ import {
 const DATA_API_URL = '/api/data';
 const ADMIN_API_URL = '/api/db-admin';
 const CACHE_KEY = 'narp_db_cache_v8';
-const APP_VERSION = 'v4.1';
+const APP_VERSION = 'v6.0';
+const APPROVALS_API_URL = '/api/db-approvals';
 const SUPER_ADMIN_EMAIL = 'grisales4000@gmail.com';
 
 const RANK_COST_MAP = { E: '1 CU', D: '2 CU', C: '4 CU', B: '6 CU', A: '8 CU', S: '10 CU' };
@@ -599,7 +603,7 @@ function App() {
   const [bmSearch, setBmSearch] = useState('');
   const [fBmCategory, setFBmCategory] = useState('Any');
 
-  const [loginTab, setLoginTab] = useState('faction');
+  const loginTab = 'user';
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginMessage, setLoginMessage] = useState(null);
@@ -622,6 +626,11 @@ function App() {
   const [seedStatus, setSeedStatus] = useState(null); // null | 'loading' | 'success' | 'error'
   const [seedMessage, setSeedMessage] = useState('');
 
+  // Approval system state
+  const [pendingEntries, setPendingEntries] = useState([]);
+  const [pendingFactionRequests, setPendingFactionRequests] = useState([]);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
+
   const CLAN_CATEGORIES = useMemo(() => Object.keys(bloodlines), [bloodlines]);
   const ALL_FACTIONS = useMemo(() => factions, [factions]);
   const SPECIALIZATIONS = useMemo(() => {
@@ -631,7 +640,7 @@ function App() {
 
   const visibleFactions = useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.role === 'admin') return ALL_FACTIONS;
+    if (currentUser.role === 'admin' || currentUser.role === 'staff') return ALL_FACTIONS;
     return currentUser.allowedFactions || [];
   }, [currentUser, ALL_FACTIONS]);
 
@@ -648,51 +657,101 @@ function App() {
     });
   }, [battlemodes, bmSearch, fBmCategory]);
 
-  // On mount, load from localStorage cache only — no auto-fetch (admin must refresh)
+  // On mount, fetch data from server cache (available to all users)
   useEffect(() => {
-    const cached = loadCachedData();
-    if (cached && cached.jutsus && cached.jutsus.length > 0) {
-      setJutsus(cached.jutsus || []);
-      setBloodlines(cached.bloodlines || {});
-      setFactions(cached.factions || []);
-      setClanSlots(cached.clanSlots || []);
-      setBattlemodes(cached.battlemodes || []);
-      setRawApiData(cached.rawApiResponse || null);
-    }
-    // No cache = empty state. Admin must log in and refresh data.
-    setDataLoading(false);
+    const loadData = async () => {
+      // Try localStorage first for instant display
+      const cached = loadCachedData();
+      if (cached && cached.jutsus && cached.jutsus.length > 0) {
+        setJutsus(cached.jutsus || []);
+        setBloodlines(cached.bloodlines || {});
+        setFactions(cached.factions || []);
+        setClanSlots(cached.clanSlots || []);
+        setBattlemodes(cached.battlemodes || []);
+        setRawApiData(cached.rawApiResponse || null);
+      }
+      // Then fetch from server to get the latest admin-refreshed data
+      try {
+        const data = await fetchFreshData();
+        setJutsus(data.jutsus);
+        setBloodlines(data.bloodlines);
+        setFactions(data.factions);
+        setClanSlots(data.clanSlots || []);
+        setBattlemodes(data.battlemodes || []);
+        setRawApiData(data.rawApiResponse || null);
+      } catch (err) {
+        // If server fetch fails but we have cached data, that's fine
+        if (!cached || !cached.jutsus || cached.jutsus.length === 0) {
+          setDataError(err.message);
+        }
+      }
+      setDataLoading(false);
+    };
+    loadData();
   }, []);
 
+  // Fetch user profile from PostgreSQL
+  const fetchUserProfile = useCallback(async () => {
+    try {
+      const res = await fetch('/api/user-profile');
+      if (!res.ok) return null;
+      const data = await res.json();
+      return mapUser(data);
+    } catch { return null; }
+  }, []);
+
+  // Fetch all users for admin panel
+  const fetchAllUsers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/users-admin');
+      if (!res.ok) return;
+      const data = await res.json();
+      setAllUsers(data.map(mapUser));
+    } catch (err) {
+      console.error('Fetch users error:', err);
+    }
+  }, []);
+
+  // Handle auth callbacks (email confirmation, password recovery)
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists() && userDoc.data().status === 'approved') {
-            setCurrentUser({ uid: firebaseUser.uid, ...userDoc.data() });
-          } else {
-            setCurrentUser(null);
-          }
-        } catch (err) {
-          console.error('Profile fetch error:', err);
+    handleAuthCallback().catch(() => {});
+  }, []);
+
+  // Check auth state on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const identityUser = await getUser();
+      if (identityUser) {
+        const profile = await fetchUserProfile();
+        if (profile && profile.status === 'approved') {
+          setCurrentUser(profile);
+        } else {
           setCurrentUser(null);
         }
       } else {
         setCurrentUser(null);
       }
       setAuthLoading(false);
+    };
+    checkAuth();
+
+    const unsub = onAuthChange(async (event) => {
+      if (event === 'login' || event === 'token_refresh') {
+        const profile = await fetchUserProfile();
+        if (profile && profile.status === 'approved') {
+          setCurrentUser(profile);
+        }
+      } else if (event === 'logout') {
+        setCurrentUser(null);
+      }
     });
     return () => unsub();
-  }, []);
+  }, [fetchUserProfile]);
 
   useEffect(() => {
-    if (currentUser?.role !== 'admin') { setAllUsers([]); return; }
-    const unsub = onSnapshot(collection(db, 'users'),
-      snap => setAllUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() }))),
-      err => console.error('Users listener error:', err)
-    );
-    return () => unsub();
-  }, [currentUser?.role]);
+    if (currentUser?.role !== 'admin' && currentUser?.role !== 'staff') { setAllUsers([]); return; }
+    fetchAllUsers();
+  }, [currentUser?.role, fetchAllUsers]);
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -702,58 +761,59 @@ function App() {
 
     try {
       if (isRequesting) {
-        const cred = await createUserWithEmailAndPassword(auth, email, passwordInput);
-        await setDoc(doc(db, 'users', cred.user.uid), {
-          email,
-          role: loginTab,
-          status: 'pending',
-          allowedFactions: [],
-          createdAt: serverTimestamp()
-        });
-        setLoginMessage({ type: 'success', text: 'Account registered! Pending admin approval.' });
-        await signOut(auth);
+        // Register via Netlify Identity
+        const newUser = await identitySignup(email, passwordInput);
+        if (newUser.emailVerified) {
+          // Autoconfirm is on — user is logged in, but still pending approval
+          setLoginMessage({ type: 'success', text: 'Account registered! Pending admin approval.' });
+          await identityLogout();
+        } else {
+          setLoginMessage({ type: 'success', text: 'Account registered! Check your email to confirm, then await admin approval.' });
+        }
         setIsRequesting(false);
         setPasswordInput('');
       } else {
-        const cred = await signInWithEmailAndPassword(auth, email, passwordInput);
-        const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
+        // Login via Netlify Identity
+        await identityLogin(email, passwordInput);
+        const profile = await fetchUserProfile();
 
-        if (!userDoc.exists()) {
+        if (!profile) {
           setLoginMessage({ type: 'error', text: 'User profile not found. Contact admin.' });
-          await signOut(auth);
+          await identityLogout();
           return;
         }
 
-        const userData = userDoc.data();
-        if (userData.status === 'approved') {
-          setCurrentUser({ uid: cred.user.uid, ...userData });
+        if (profile.status === 'approved') {
+          setCurrentUser(profile);
           setLoginMessage(null);
-          setView(userData.role === 'admin' ? 'admin_dashboard' : userData.role === 'staff' ? 'manage_data' : 'browser');
-        } else if (userData.status === 'pending') {
+          setView(profile.role === 'admin' ? 'admin_dashboard' : profile.role === 'staff' ? 'manage_data' : 'browser');
+        } else if (profile.status === 'pending') {
           setLoginMessage({ type: 'pending', text: 'Account is pending admin approval.' });
-          await signOut(auth);
+          await identityLogout();
         } else {
           setLoginMessage({ type: 'error', text: 'Access request was denied by admin.' });
-          await signOut(auth);
+          await identityLogout();
         }
       }
     } catch (err) {
-      const msg = {
-        'auth/email-already-in-use': 'Account already exists. Log in instead.',
-        'auth/user-not-found': 'Invalid email or password.',
-        'auth/wrong-password': 'Invalid email or password.',
-        'auth/invalid-credential': 'Invalid email or password.',
-        'auth/weak-password': 'Password must be at least 6 characters.',
-        'auth/invalid-email': 'Invalid email address.',
-      }[err.code] || err.message;
-      setLoginMessage({ type: 'error', text: msg });
+      if (err instanceof AuthError) {
+        const msg = {
+          422: 'Invalid input. Check your email and password (min 6 characters).',
+          401: 'Invalid email or password.',
+          403: isRequesting ? 'Signups are not allowed. Contact admin.' : 'Access denied.',
+          404: 'Invalid email or password.',
+        }[err.status] || err.message;
+        setLoginMessage({ type: 'error', text: msg });
+      } else {
+        setLoginMessage({ type: 'error', text: err.message || 'An error occurred.' });
+      }
     } finally {
       setLoginLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
+    try { await identityLogout(); } catch {}
     setCurrentUser(null);
     setEmailInput(''); setPasswordInput('');
     setLoginMessage(null); setFActiveSecrets([]);
@@ -761,17 +821,230 @@ function App() {
   };
 
   const handleUpdateUserStatus = async (uid, newStatus) => {
-    try { await updateDoc(doc(db, 'users', uid), { status: newStatus }); }
-    catch (err) { console.error('Update status error:', err); }
+    try {
+      const res = await fetch('/api/users-admin?action=update_status', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, status: newStatus })
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      await fetchAllUsers();
+    } catch (err) { console.error('Update status error:', err); }
+  };
+
+  const handleDeleteAccount = async (uid, email) => {
+    if (!confirm(`Permanently delete account "${email}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch('/api/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: uid })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete account');
+      await fetchAllUsers();
+    } catch (err) {
+      console.error('Delete account error:', err);
+      alert('Failed to delete account: ' + err.message);
+    }
+  };
+
+  const handleSetNickname = async (uid, nickname) => {
+    try {
+      const res = await fetch('/api/users-admin?action=update_nickname', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, nickname: nickname.trim() || null })
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      await fetchAllUsers();
+    } catch (err) { console.error('Set nickname error:', err); }
   };
 
   const handleToggleFaction = async (uid, faction) => {
     try {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      const curr = userDoc.data().allowedFactions || [];
-      const updated = curr.includes(faction) ? curr.filter(f => f !== faction) : [...curr, faction];
-      await updateDoc(doc(db, 'users', uid), { allowedFactions: updated });
+      const res = await fetch('/api/users-admin?action=toggle_faction', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, faction })
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      await fetchAllUsers();
     } catch (err) { console.error('Toggle faction error:', err); }
+  };
+
+  const handleChangeUserRole = async (uid, newRole) => {
+    try {
+      const res = await fetch('/api/users-admin?action=update_role', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, role: newRole })
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      await fetchAllUsers();
+    } catch (err) { console.error('Change role error:', err); }
+  };
+
+  const canPromote = (targetRole, targetEmail) => {
+    if (!currentUser) return [];
+    const isSuperAdmin = currentUser.email === SUPER_ADMIN_EMAIL;
+    if (isSuperAdmin) {
+      // Super admin can promote/demote anyone to any level
+      if (targetRole === 'user') return ['staff', 'admin'];
+      if (targetRole === 'staff') return ['admin'];
+      if (targetRole === 'admin') return []; // already highest (below super)
+      return [];
+    }
+    if (currentUser.role === 'admin') {
+      // Admin can promote users to staff only
+      if (targetRole === 'user') return ['staff'];
+      return [];
+    }
+    return [];
+  };
+
+  const canDemote = (targetRole, targetEmail) => {
+    if (!currentUser) return [];
+    const isSuperAdmin = currentUser.email === SUPER_ADMIN_EMAIL;
+    if (isSuperAdmin) {
+      if (targetRole === 'admin' && targetEmail !== SUPER_ADMIN_EMAIL) return ['staff', 'user'];
+      if (targetRole === 'staff') return ['user'];
+      return [];
+    }
+    if (currentUser.role === 'admin') {
+      // Standard admins can demote staff to user, cannot demote other admins
+      if (targetRole === 'staff') return ['user'];
+      return [];
+    }
+    return [];
+  };
+
+  // Fetch pending approvals
+  const fetchPendingApprovals = async () => {
+    setApprovalsLoading(true);
+    try {
+      const res = await fetch(`${APPROVALS_API_URL}?action=all_pending`);
+      const data = await res.json();
+      if (res.ok) {
+        setPendingEntries(data.pending_entries || []);
+        setPendingFactionRequests(data.pending_faction_requests || []);
+      }
+    } catch (err) {
+      console.error('Fetch approvals error:', err);
+    }
+    setApprovalsLoading(false);
+  };
+
+  // Submit a pending jutsu entry (for staff)
+  const handleSubmitPendingEntry = async (tableName, entryData) => {
+    try {
+      const res = await fetch(`${APPROVALS_API_URL}?action=submit_entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          table_name: tableName,
+          entry_data: entryData,
+          submitted_by_email: currentUser.email,
+          submitted_by_role: currentUser.role,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Submit failed');
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  // Resolve a pending entry (approve/deny)
+  const handleResolveEntry = async (id, decision) => {
+    try {
+      const res = await fetch(`${APPROVALS_API_URL}?action=resolve_entry&id=${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision,
+          approved_by_email: currentUser.email,
+          approved_by_role: currentUser.role,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Resolve failed');
+      await fetchPendingApprovals();
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  // Request faction access (staff submits for approval)
+  const handleRequestFactionAccess = async (targetUid, targetEmail, faction) => {
+    try {
+      const res = await fetch(`${APPROVALS_API_URL}?action=request_faction_access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_uid: targetUid,
+          target_email: targetEmail,
+          faction,
+          requested_by_email: currentUser.email,
+          requested_by_role: currentUser.role,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      if (data.bypass) {
+        // Admin can grant directly
+        await handleToggleFaction(targetUid, faction);
+        return { direct: true };
+      }
+      await fetchPendingApprovals();
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  // Resolve a faction access request
+  const handleResolveFactionRequest = async (id, decision) => {
+    try {
+      const res = await fetch(`${APPROVALS_API_URL}?action=resolve_faction_request&id=${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision,
+          approved_by_email: currentUser.email,
+          approved_by_role: currentUser.role,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Resolve failed');
+      // If approved, grant the actual access
+      if (data.grant_access) {
+        await handleToggleFaction(data.target_uid, data.faction);
+      }
+      await fetchPendingApprovals();
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  // Clear [Admin Approval Pending] tag
+  const handleClearAdminPending = async (rowId, tableName) => {
+    try {
+      const res = await fetch(`${APPROVALS_API_URL}?action=clear_admin_pending&id=0`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ row_id: rowId, table_name: tableName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Clear failed');
+      await fetchManageRows(manageTable);
+      return data;
+    } catch (err) {
+      throw err;
+    }
   };
 
   const handleCopyLink = (link, id) => {
@@ -786,18 +1059,103 @@ function App() {
   };
 
   const handleForceRefresh = async () => {
-    if (currentUser?.role !== 'admin' && currentUser?.role !== 'staff') return; // Only admins/staff can refresh
+    if (currentUser?.role !== 'admin') return; // Only admins can refresh
     setDataLoading(true);
     setDataError(null);
     localStorage.removeItem(CACHE_KEY);
     try {
-      const data = await fetchFreshData();
-      setJutsus(data.jutsus);
-      setBloodlines(data.bloodlines);
-      setFactions(data.factions);
-      setClanSlots(data.clanSlots || []);
-      setBattlemodes(data.battlemodes || []);
-      setRawApiData(data.rawApiResponse || null);
+      // POST to /api/data-refresh which updates the server-side cache for everyone
+      const res = await fetch('/api/data-refresh', { method: 'POST' });
+      if (!res.ok) throw new Error(`Refresh failed: ${res.status}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+
+      // Process the returned data the same way fetchFreshData does
+      const bloodlines = getVal(json, 'bloodlines', 'Bloodlines') || {};
+      const factions = getVal(json, 'factions', 'Factions') || [];
+
+      const rawClanSlots = getVal(json, 'clanSlots', 'clanslots', 'clan_slots', 'ClanSlots', 'Clan Slots') || [];
+      const clanSlots = rawClanSlots.map(slot => {
+        const name = getStr(slot, 'name', 'Name', 'Clan', 'Clan Name', 'ClanName', 'Item', 'Item Name');
+        if (!name) return null;
+        const availRaw = getStr(slot, 'available', 'Available', 'Status', 'Availability', 'AvailableSlot');
+        const availLower = availRaw.toLowerCase();
+        const availBool = getVal(slot, 'available', 'Available');
+        let isAvailable;
+        if (typeof availBool === 'boolean') {
+          isAvailable = availBool;
+        } else if (['n/a','no','unavailable','closed','taken','full','0','false'].includes(availLower)) {
+          isAvailable = false;
+        } else {
+          isAvailable = true;
+        }
+        return {
+          _id: `cs-${name}`,
+          name,
+          available: isAvailable,
+          link: getStr(slot, 'link', 'Link', 'doc_link', 'Doc', 'Doc Link', 'DocLink', 'URL'),
+          slots: getStr(slot, 'Slots', 'slots'),
+        };
+      }).filter(Boolean);
+
+      const rawJutsus = getVal(json, 'jutsus', 'Jutsus') || [];
+      const jutsus = rawJutsus.map((row, idx) => {
+        const name = getStr(row, 'Ability Name', 'name', 'Name', 'jutsu_name', 'JutsuName', 'Jutsu');
+        if (!name) return null;
+        return {
+          _id: `j-${idx}`,
+          name,
+          nature: getStr(row, 'Nature Type', 'nature', 'Nature', 'element', 'Element'),
+          rank: getStr(row, 'Rank', 'rank'),
+          cost: getStr(row, 'Cost', 'cost'),
+          types: getStr(row, 'Jutsu Types', 'types', 'Type', 'jutsu_type'),
+          origin: getStr(row, 'Origin', 'origin'),
+          spec: getStr(row, 'Specialization', 'specialization', 'spec'),
+          link: getStr(row, 'Doc Link', 'doc_link', 'Doc', 'Link', 'URL'),
+          bloodline: getStr(row, 'Bloodline', 'bloodline'),
+          conditions: getStr(row, 'Conditions', 'conditions'),
+          secretFaction: getStr(row, 'Secret Faction', 'secret_faction', 'SecretFaction'),
+          staffReview: getStr(row, 'Staff Review', 'staff_review', 'StaffReview'),
+          slots: getStr(row, 'Slots', 'slots'),
+        };
+      }).filter(Boolean);
+
+      const rawBattlemodes = getVal(json, 'battlemodes', 'Battlemodes') || [];
+      const battlemodes = rawBattlemodes.map((row, idx) => {
+        const name = getStr(row, 'Name', 'name');
+        if (!name) return null;
+        const category = getStr(row, 'Type', 'type', 'category', 'Category');
+        const clan = getStr(row, 'Bloodline/Hidden', 'bloodline', 'Bloodline', 'Clan');
+        const nature = getStr(row, 'Nature(s)', 'nature', 'Nature', 'Natures');
+        const link = getStr(row, 'Doc', 'doc_link', 'Link', 'URL');
+        const limitedStr = getStr(row, 'Limited', 'limited').toLowerCase();
+        const hasLimitedSlots = limitedStr === 'yes' || limitedStr === 'true' || limitedStr === '1';
+        const availStr = getStr(row, 'Available', 'available').toLowerCase();
+        const isAvailable = availStr !== 'no' && availStr !== 'false' && availStr !== '0' && availStr !== 'n/a';
+        return {
+          _id: `bm-${idx}`,
+          name,
+          category,
+          clan,
+          nature,
+          link,
+          limitedSlots: hasLimitedSlots,
+          available: isAvailable,
+          mustLearnIC: getStr(row, 'Must Learn IC', 'must_learn_ic', 'MustLearnIC').toLowerCase() === 'yes',
+          slots: getStr(row, 'Slots', 'slots'),
+        };
+      }).filter(Boolean);
+
+      const rawApiResponse = { ...json, _fetchedAt: new Date().toISOString() };
+      const result = { jutsus, bloodlines, factions, clanSlots, battlemodes, rawApiResponse, ts: Date.now() };
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch (e) { }
+
+      setJutsus(jutsus);
+      setBloodlines(bloodlines);
+      setFactions(factions);
+      setClanSlots(clanSlots);
+      setBattlemodes(battlemodes);
+      setRawApiData(rawApiResponse);
       setDataError(null);
     } catch (err) { setDataError(err.message); }
     setDataLoading(false);
@@ -978,6 +1336,22 @@ function App() {
         payload.must_learn_ic = payload.must_learn_ic === 'Yes' ? 'Yes' : '';
       }
 
+      // Staff submitting to jutsu-like tables must go through approval
+      if (currentUser?.role === 'staff' && isNew) {
+        try {
+          const result = await handleSubmitPendingEntry(manageTable, payload);
+          setManageSuccess('Draft submitted for approval! An Admin or another Staff member must approve before it is published.');
+          setEditingRow(null);
+          setFormData({});
+          setManageLoading(false);
+          return;
+        } catch (err) {
+          setManageError(err.message);
+          setManageLoading(false);
+          return;
+        }
+      }
+
       const res = await fetch(url, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1047,6 +1421,13 @@ function App() {
     }
   }, [view]);
 
+  // Load pending approvals when viewing admin dashboard
+  useEffect(() => {
+    if ((view === 'admin_dashboard' || view === 'manage_data') && (currentUser?.role === 'admin' || currentUser?.role === 'staff')) {
+      fetchPendingApprovals();
+    }
+  }, [view, currentUser?.role]);
+
   const filteredJutsus = useMemo(() => {
     const secretModeActive = fActiveSecrets.length > 0;
 
@@ -1091,16 +1472,16 @@ function App() {
       <Database size={48} className="text-slate-400" />
       <p className="text-slate-700 text-lg font-semibold">No Data Available</p>
       {dataError && <p className="text-red-500 text-sm">Error: {dataError}</p>}
-      {(currentUser?.role === 'admin' || currentUser?.role === 'staff') ? (
+      {currentUser?.role === 'admin' ? (
         <div className="text-center">
-          <p className="text-slate-500 text-sm mb-3">Click below to fetch data from the database.</p>
+          <p className="text-slate-500 text-sm mb-3">Click below to fetch data from the database and make it available to all users.</p>
           <button onClick={handleForceRefresh} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 mx-auto transition-colors">
             <RefreshCw size={14} /> Refresh Data
           </button>
         </div>
       ) : (
         <div className="text-center">
-          <p className="text-slate-500 text-sm">An admin needs to refresh the data first.</p>
+          <p className="text-slate-500 text-sm">No data available yet. An admin needs to refresh the database.</p>
           {!currentUser && <p className="text-slate-400 text-xs mt-2">If you are an admin, click <strong>Login</strong> above to get started.</p>}
         </div>
       )}
@@ -1459,20 +1840,15 @@ function App() {
   const renderLogin = () => (
     <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-100 overflow-y-auto">
       <div className="bg-white p-8 rounded-3xl shadow-xl border w-full max-w-sm">
-        <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
-          <button type="button" onClick={() => { setLoginTab('admin'); setLoginMessage(null); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex justify-center gap-2 items-center ${loginTab === 'admin' ? 'bg-white shadow text-indigo-700' : 'text-slate-500'}`}><Shield size={16} /> Admin</button>
-          <button type="button" onClick={() => { setLoginTab('staff'); setLoginMessage(null); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex justify-center gap-2 items-center ${loginTab === 'staff' ? 'bg-white shadow text-cyan-700' : 'text-slate-500'}`}><UserCheck size={16} /> Staff</button>
-          <button type="button" onClick={() => { setLoginTab('faction'); setLoginMessage(null); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex justify-center gap-2 items-center ${loginTab === 'faction' ? 'bg-white shadow text-purple-700' : 'text-slate-500'}`}><Key size={16} /> Faction</button>
-        </div>
-        <h2 className="text-2xl font-bold mb-2 text-center text-slate-800">{loginTab === 'admin' ? 'Admin Login' : loginTab === 'staff' ? 'Staff Login' : 'Faction Access'}</h2>
-        <p className="text-sm text-slate-500 mb-6 text-center">{loginTab === 'admin' ? 'Log in to manage users and database.' : loginTab === 'staff' ? 'Log in to manage database content.' : 'Unlock hidden techniques for your faction.'}</p>
+        <h2 className="text-2xl font-bold mb-2 text-center text-slate-800">Login</h2>
+        <p className="text-sm text-slate-500 mb-6 text-center">{isRequesting ? 'Register for an account. An admin will approve your access.' : 'Log in to access the NARP Database.'}</p>
         {loginMessage && (
           <div className={`mb-4 p-3 rounded-lg text-sm ${loginMessage.type === 'error' ? 'bg-red-50 text-red-800' : loginMessage.type === 'pending' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`}>{loginMessage.text}</div>
         )}
         <form onSubmit={handleLoginSubmit} className="space-y-4">
           <input type="email" required placeholder="Email Address" className="w-full bg-slate-50 border py-3 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} disabled={loginLoading} />
           <input type="password" required minLength={6} placeholder={isRequesting ? "Create Password (min 6)" : "Password"} className="w-full bg-slate-50 border py-3 px-4 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} disabled={loginLoading} />
-          <button type="submit" disabled={loginLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 ${loginTab === 'admin' ? 'bg-slate-900 hover:bg-black' : loginTab === 'staff' ? 'bg-cyan-600 hover:bg-cyan-700' : 'bg-purple-600 hover:bg-purple-700'}`}>
+          <button type="submit" disabled={loginLoading} className="w-full text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 bg-indigo-600 hover:bg-indigo-700">
             {loginLoading ? 'Please wait...' : isRequesting ? 'Request Access' : 'Log In'}
           </button>
           <div className="flex justify-between items-center pt-2">
@@ -1488,13 +1864,14 @@ function App() {
     const pendingUsers = allUsers.filter(u => u.status === 'pending');
     const approvedUsers = allUsers.filter(u => u.status === 'approved' && u.uid !== currentUser?.uid);
     const deniedUsers = allUsers.filter(u => u.status === 'denied');
+    const isSuperAdmin = currentUser?.email === SUPER_ADMIN_EMAIL;
 
     return (
       <div className="flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 pb-10">
         <div className="max-w-4xl mx-auto">
           <div className="mb-6 bg-emerald-600 text-white p-6 rounded-2xl flex items-center gap-4 shadow-lg">
             <UsersIcon size={32} />
-            <div><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-sm text-emerald-100 mt-1">Manage user accounts and faction access.</p></div>
+            <div><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-sm text-emerald-100 mt-1">Manage user accounts, roles, and approvals.</p></div>
           </div>
 
           {/* Database Management Section */}
@@ -1531,33 +1908,116 @@ function App() {
             )}
           </div>
 
-          {/* How to Add Admins & Staff Guide */}
+          {/* Pending Jutsu Entries Approval */}
+          {pendingEntries.length > 0 && (
+            <div className="mb-8 bg-white border border-amber-200 shadow-sm rounded-2xl p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="bg-amber-100 p-2 rounded-full text-amber-600"><Clock size={20} /></div>
+                <div>
+                  <h3 className="font-bold text-slate-800">Pending Database Entries ({pendingEntries.length})</h3>
+                  <p className="text-xs text-slate-500">Staff submissions awaiting approval before publication.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {pendingEntries.map(entry => {
+                  let entryData = {};
+                  try { entryData = JSON.parse(entry.entry_data); } catch {}
+                  const canApproveThis = currentUser?.role === 'admin' || (currentUser?.role === 'staff' && currentUser?.email !== entry.submitted_by_email);
+                  return (
+                    <div key={entry.id} className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase text-amber-600">{entry.table_name}</span>
+                          <h4 className="text-sm font-bold text-slate-800">{entryData.name || '(untitled)'}</h4>
+                          <p className="text-xs text-slate-500 mt-0.5">Submitted by: <strong>{entry.submitted_by_email}</strong></p>
+                        </div>
+                        <div className="flex gap-2">
+                          {canApproveThis ? (
+                            <>
+                              <button onClick={() => handleResolveEntry(entry.id, 'approve').catch(err => setManageError(err.message))} className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><CheckCircle size={14} /> Approve</button>
+                              <button onClick={() => handleResolveEntry(entry.id, 'deny').catch(err => setManageError(err.message))} className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><XCircle size={14} /> Deny</button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">Awaiting other reviewer</span>
+                          )}
+                        </div>
+                      </div>
+                      {currentUser?.role === 'staff' && currentUser?.email !== entry.submitted_by_email && (
+                        <p className="text-[10px] text-amber-700 mt-1">Staff approval will publish with [Admin Approval Pending] tag.</p>
+                      )}
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {Object.entries(entryData).filter(([k, v]) => v && k !== 'name' && k !== 'slots').map(([k, v]) => (
+                          <span key={k} className="px-2 py-0.5 rounded text-[10px] bg-white border border-amber-200 text-slate-600" title={`${k}: ${v}`}>{k}: {String(v).substring(0, 30)}</span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Pending Faction Access Requests */}
+          {pendingFactionRequests.length > 0 && (
+            <div className="mb-8 bg-white border border-purple-200 shadow-sm rounded-2xl p-5">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="bg-purple-100 p-2 rounded-full text-purple-600"><Key size={20} /></div>
+                <div>
+                  <h3 className="font-bold text-slate-800">Pending Faction Access Requests ({pendingFactionRequests.length})</h3>
+                  <p className="text-xs text-slate-500">Faction secret access requests awaiting approval.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {pendingFactionRequests.map(req => {
+                  const canApproveThis = currentUser?.role === 'admin' || (currentUser?.role === 'staff' && currentUser?.email !== req.requested_by_email);
+                  return (
+                    <div key={req.id} className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">Grant <span className="text-purple-700">{req.faction}</span> access to <span className="text-slate-600">{req.target_email}</span></p>
+                        <p className="text-xs text-slate-500 mt-0.5">Requested by: <strong>{req.requested_by_email}</strong></p>
+                      </div>
+                      <div className="flex gap-2">
+                        {canApproveThis ? (
+                          <>
+                            <button onClick={() => handleResolveFactionRequest(req.id, 'approve').catch(err => console.error(err))} className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><CheckCircle size={14} /> Approve</button>
+                            <button onClick={() => handleResolveFactionRequest(req.id, 'deny').catch(err => console.error(err))} className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><XCircle size={14} /> Deny</button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">Awaiting other reviewer</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Role Guide */}
           <div className="mb-8 bg-white border border-slate-200 shadow-sm rounded-2xl p-5">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-indigo-100 p-2 rounded-full text-indigo-600"><BookOpen size={20} /></div>
               <div>
-                <h3 className="font-bold text-slate-800">How to Add Admins & Staff</h3>
-                <p className="text-xs text-slate-500">Role guide and access management instructions.</p>
+                <h3 className="font-bold text-slate-800">Role Hierarchy & Permissions</h3>
+                <p className="text-xs text-slate-500">Four-tier role system with approval workflows.</p>
               </div>
             </div>
             <div className="space-y-3 text-sm text-slate-700">
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <p className="font-bold text-slate-800 mb-1">Step 1: User Registers</p>
-                <p>New users visit the site, click <strong>Login</strong>, choose their role tab (<strong>Admin</strong>, <strong>Staff</strong>, or <strong>Faction</strong>), click "Need access? Register", and create an account. They will appear in the <strong>Pending</strong> list below.</p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <p className="font-bold text-slate-800 mb-1">Step 2: You Approve Them</p>
-                <p>Find them in the <strong>Pending</strong> section and click <strong>Approve</strong>. Their role is whatever tab they chose when registering (Admin, Staff, or Faction). You can <strong>Deny</strong> or <strong>Revoke</strong> access at any time.</p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                 <p className="font-bold text-slate-800 mb-2">Role Permissions:</p>
-                <ul className="space-y-1 text-xs">
-                  <li className="flex items-center gap-2"><Shield size={14} className="text-indigo-600 shrink-0" /> <strong>Admin</strong> — Full access: manage users, manage data, refresh/transfer data, view API data.</li>
-                  <li className="flex items-center gap-2"><UserCheck size={14} className="text-cyan-600 shrink-0" /> <strong>Staff</strong> — Can manage data (add/edit/delete items) and view API data. Cannot manage users.</li>
-                  <li className="flex items-center gap-2"><Key size={14} className="text-purple-600 shrink-0" /> <strong>Faction</strong> — Can view secret faction jutsus assigned to them. No editing access.</li>
+                <ul className="space-y-1.5 text-xs">
+                  <li className="flex items-center gap-2"><Shield size={14} className="text-indigo-600 shrink-0" /> <strong>Admin</strong> — Manage users, approve entries directly, grant faction access. Can promote Users to Staff and demote Staff to Users.</li>
+                  <li className="flex items-center gap-2"><UserCheck size={14} className="text-cyan-600 shrink-0" /> <strong>Staff</strong> — Can manage data (entries require approval). Can request faction access (requires second approval).</li>
+                  <li className="flex items-center gap-2"><Key size={14} className="text-purple-600 shrink-0" /> <strong>User</strong> — Can view faction secrets assigned to them. Browse-only access.</li>
                 </ul>
               </div>
-              <p className="text-xs text-slate-500">Only the super admin ({SUPER_ADMIN_EMAIL}) can revoke other admins.</p>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <p className="font-bold text-slate-800 mb-2">Approval Workflows:</p>
+                <ul className="space-y-1.5 text-xs">
+                  <li><strong>Jutsu Entries:</strong> Staff submissions require approval. Admin approval publishes immediately. Staff-to-staff approval publishes with [Admin Approval Pending] tag.</li>
+                  <li><strong>Faction Secrets:</strong> Admins can grant access directly. Staff must have a second Staff member or Admin approve the request.</li>
+                </ul>
+              </div>
             </div>
           </div>
 
@@ -1567,7 +2027,7 @@ function App() {
               <div key={user.uid} className="bg-white border border-amber-200 shadow-sm rounded-xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-3">
                   <div className="bg-amber-100 p-2 rounded-full text-amber-600"><Clock size={20} /></div>
-                  <div><p className="font-bold text-slate-800">{user.email}</p><p className="text-[10px] font-bold uppercase text-amber-600 mt-0.5">Requesting: {user.role}</p></div>
+                  <div><p className="font-bold text-slate-800">{user.nickname || user.email}</p>{user.nickname && <p className="text-[10px] text-slate-400">{user.email}</p>}<p className="text-[10px] font-bold uppercase text-amber-600 mt-0.5">Requesting: {user.role}</p></div>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
                   <button onClick={() => handleUpdateUserStatus(user.uid, 'approved')} className="flex-1 md:flex-none bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-4 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-1"><CheckCircle size={16} /> Approve</button>
@@ -1580,37 +2040,147 @@ function App() {
 
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Approved ({approvedUsers.length})</h3>
           <div className="space-y-4 mb-8">
-            {approvedUsers.map(user => (
+            {approvedUsers.map(user => {
+              const promoteOptions = canPromote(user.role, user.email);
+              const demoteOptions = canDemote(user.role, user.email);
+              const roleColor = user.role === 'admin' ? 'bg-indigo-100 text-indigo-600' : user.role === 'staff' ? 'bg-cyan-100 text-cyan-600' : 'bg-purple-100 text-purple-600';
+              const roleIcon = user.role === 'admin' ? <Shield size={20} /> : user.role === 'staff' ? <UserCheck size={20} /> : <Key size={20} />;
+
+              return (
               <div key={user.uid} className="bg-white border border-slate-200 shadow-sm rounded-xl p-4 md:p-5">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${user.role === 'admin' ? 'bg-indigo-100 text-indigo-600' : user.role === 'staff' ? 'bg-cyan-100 text-cyan-600' : 'bg-purple-100 text-purple-600'}`}>
-                      {user.role === 'admin' ? <Shield size={20} /> : user.role === 'staff' ? <UserCheck size={20} /> : <Key size={20} />}
+                    <div className={`p-2 rounded-full ${roleColor}`}>{roleIcon}</div>
+                    <div>
+                      <p className="font-bold text-slate-700">{user.nickname || user.email}</p>
+                      {user.nickname && <p className="text-[10px] text-slate-400">{user.email}</p>}
+                      <p className="text-[10px] font-bold uppercase text-slate-400 mt-0.5">
+                        {user.role}
+                      </p>
                     </div>
-                    <div><p className="font-bold text-slate-700">{user.email}</p><p className="text-[10px] font-bold uppercase text-slate-400 mt-0.5">{user.role}</p></div>
+                    {currentUser?.role === 'admin' && (
+                      <button
+                        onClick={() => {
+                          const name = prompt('Set nickname for ' + user.email + ':', user.nickname || '');
+                          if (name !== null) handleSetNickname(user.uid, name);
+                        }}
+                        className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-1 rounded-lg transition-colors ml-1"
+                        title="Set nickname"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    )}
                   </div>
-                  {/* Only super admin can revoke other admins; any admin can revoke non-admins */}
-                  {(user.role !== 'admin' || currentUser?.email === SUPER_ADMIN_EMAIL) ? (
-                    <button onClick={() => handleUpdateUserStatus(user.uid, 'denied')} className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold">Revoke</button>
-                  ) : (
-                    <span className="text-slate-300 px-3 py-1.5 text-xs font-bold" title="Only the super admin can revoke other admins">Protected</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Promote/Demote controls */}
+                    {promoteOptions.length > 0 && (
+                      <div className="flex gap-1">
+                        {promoteOptions.map(newRole => (
+                          <button key={`promote-${newRole}`} onClick={() => handleChangeUserRole(user.uid, newRole)}
+                            className="text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg text-[10px] font-bold border border-emerald-200 transition-colors"
+                            title={`Promote to ${newRole}`}>
+                            Promote to {newRole}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {demoteOptions.length > 0 && (
+                      <div className="flex gap-1">
+                        {demoteOptions.map(newRole => (
+                          <button key={`demote-${newRole}`} onClick={() => handleChangeUserRole(user.uid, newRole)}
+                            className="text-amber-600 hover:bg-amber-50 px-2 py-1 rounded-lg text-[10px] font-bold border border-amber-200 transition-colors"
+                            title={`Demote to ${newRole}`}>
+                            Demote to {newRole}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {/* Delete account */}
+                    {(user.role !== 'admin' || isSuperAdmin) && user.email !== SUPER_ADMIN_EMAIL ? (
+                      <button onClick={() => handleDeleteAccount(user.uid, user.nickname || user.email)} className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><Trash2 size={14} /> Delete</button>
+                    ) : (
+                      <span className="text-slate-300 px-3 py-1.5 text-xs font-bold" title="Protected account">Protected</span>
+                    )}
+                  </div>
                 </div>
+                {/* Faction access for users */}
+                {user.role === 'user' && (
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    <p className="text-xs font-bold text-slate-500 uppercase mb-3">
+                      Grant Faction Secrets:
+                      {currentUser?.role === 'staff' && <span className="normal-case font-normal text-amber-600 ml-1">(requires second approval)</span>}
+                    </p>
+                    <div className="flex flex-wrap gap-2.5">
+                      {ALL_FACTIONS.map(faction => {
+                        const hasPendingRequest = pendingFactionRequests.some(r => r.target_uid === user.uid && r.faction === faction);
+                        const hasAccess = user.allowedFactions?.includes(faction);
+                        return (
+                          <label key={faction} className={`flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-3 py-1.5 rounded border transition-colors ${hasAccess ? 'bg-purple-50 border-purple-300 text-purple-800' : hasPendingRequest ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                            <input
+                              type="checkbox"
+                              checked={hasAccess || false}
+                              disabled={hasPendingRequest}
+                              onChange={() => {
+                                if (currentUser?.role === 'admin') {
+                                  // Admin grants directly
+                                  handleToggleFaction(user.uid, faction);
+                                } else if (currentUser?.role === 'staff') {
+                                  if (hasAccess) {
+                                    // Revoking: staff can request revocation via approval too
+                                    handleRequestFactionAccess(user.uid, user.email, faction).catch(err => console.error(err));
+                                  } else {
+                                    // Staff submits request for approval
+                                    handleRequestFactionAccess(user.uid, user.email, faction).catch(err => console.error(err));
+                                  }
+                                }
+                              }}
+                              className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                            />
+                            {faction}
+                            {hasPendingRequest && <span className="text-[9px] text-amber-600 ml-1">(pending)</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {/* Also show faction access for faction role (backwards compat) */}
                 {user.role === 'faction' && (
                   <div className="mt-4 pt-4 border-t border-slate-100">
-                    <p className="text-xs font-bold text-slate-500 uppercase mb-3">Grant Faction Secrets:</p>
+                    <p className="text-xs font-bold text-slate-500 uppercase mb-3">
+                      Grant Faction Secrets:
+                      {currentUser?.role === 'staff' && <span className="normal-case font-normal text-amber-600 ml-1">(requires second approval)</span>}
+                    </p>
                     <div className="flex flex-wrap gap-2.5">
-                      {ALL_FACTIONS.map(faction => (
-                        <label key={faction} className={`flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-3 py-1.5 rounded border transition-colors ${user.allowedFactions?.includes(faction) ? 'bg-purple-50 border-purple-300 text-purple-800' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                          <input type="checkbox" checked={user.allowedFactions?.includes(faction) || false} onChange={() => handleToggleFaction(user.uid, faction)} className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5" />
-                          {faction}
-                        </label>
-                      ))}
+                      {ALL_FACTIONS.map(faction => {
+                        const hasPendingRequest = pendingFactionRequests.some(r => r.target_uid === user.uid && r.faction === faction);
+                        const hasAccess = user.allowedFactions?.includes(faction);
+                        return (
+                          <label key={faction} className={`flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-3 py-1.5 rounded border transition-colors ${hasAccess ? 'bg-purple-50 border-purple-300 text-purple-800' : hasPendingRequest ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                            <input
+                              type="checkbox"
+                              checked={hasAccess || false}
+                              disabled={hasPendingRequest}
+                              onChange={() => {
+                                if (currentUser?.role === 'admin') {
+                                  handleToggleFaction(user.uid, faction);
+                                } else if (currentUser?.role === 'staff') {
+                                  handleRequestFactionAccess(user.uid, user.email, faction).catch(err => console.error(err));
+                                }
+                              }}
+                              className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                            />
+                            {faction}
+                            {hasPendingRequest && <span className="text-[9px] text-amber-600 ml-1">(pending)</span>}
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {deniedUsers.length > 0 && (
@@ -1621,9 +2191,14 @@ function App() {
                   <div key={user.uid} className="bg-white border border-red-100 shadow-sm rounded-xl p-4 flex justify-between items-center opacity-60">
                     <div className="flex items-center gap-3">
                       <div className="bg-red-100 p-2 rounded-full text-red-400"><XCircle size={20} /></div>
-                      <div><p className="font-bold text-slate-600">{user.email}</p><p className="text-[10px] font-bold uppercase text-red-400">{user.role}</p></div>
+                      <div><p className="font-bold text-slate-600">{user.nickname || user.email}</p>{user.nickname && <p className="text-[10px] text-slate-400">{user.email}</p>}<p className="text-[10px] font-bold uppercase text-red-400">{user.role}</p></div>
                     </div>
-                    <button onClick={() => handleUpdateUserStatus(user.uid, 'approved')} className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1"><CheckCircle size={16} /> Re-approve</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleUpdateUserStatus(user.uid, 'approved')} className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1"><CheckCircle size={16} /> Re-approve</button>
+                      {user.email !== SUPER_ADMIN_EMAIL && (
+                        <button onClick={() => handleDeleteAccount(user.uid, user.nickname || user.email)} className="bg-red-100 text-red-700 hover:bg-red-200 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1"><Trash2 size={16} /> Delete</button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1775,6 +2350,38 @@ function App() {
           {manageError && (
             <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-800 border border-red-200 flex items-center gap-2">
               <AlertCircle size={16} /> {manageError}
+            </div>
+          )}
+
+          {/* Pending entries notification for staff */}
+          {currentUser?.role === 'staff' && pendingEntries.filter(e => e.submitted_by_email === currentUser.email).length > 0 && (
+            <div className="mb-4 p-3 rounded-lg text-sm bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-2">
+              <Clock size={16} /> You have {pendingEntries.filter(e => e.submitted_by_email === currentUser.email).length} pending submission(s) awaiting approval.
+            </div>
+          )}
+
+          {/* Pending entries that this user can approve */}
+          {pendingEntries.filter(e => e.table_name === manageTable && e.submitted_by_email !== currentUser?.email).length > 0 && (
+            <div className="mb-4 bg-white border border-amber-200 rounded-2xl p-4">
+              <h4 className="text-sm font-bold text-amber-800 mb-3 flex items-center gap-2"><Clock size={16} /> Pending Approvals for {MANAGE_TABLES[manageTable]?.label}</h4>
+              <div className="space-y-2">
+                {pendingEntries.filter(e => e.table_name === manageTable && e.submitted_by_email !== currentUser?.email).map(entry => {
+                  let entryData = {};
+                  try { entryData = JSON.parse(entry.entry_data); } catch {}
+                  return (
+                    <div key={entry.id} className="bg-amber-50 rounded-lg p-3 flex justify-between items-center">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{entryData.name || '(untitled)'}</p>
+                        <p className="text-[10px] text-slate-500">by {entry.submitted_by_email}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleResolveEntry(entry.id, 'approve').then(() => setManageSuccess('Entry approved!')).catch(err => setManageError(err.message))} className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold"><CheckCircle size={12} className="inline mr-1" />Approve</button>
+                        <button onClick={() => handleResolveEntry(entry.id, 'deny').then(() => setManageSuccess('Entry denied.')).catch(err => setManageError(err.message))} className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1.5 rounded-lg text-xs font-bold"><XCircle size={12} className="inline mr-1" />Deny</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -2004,6 +2611,17 @@ function App() {
                         ));
                       })}
                       {row.staff_review === 'Yes' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-800 border border-red-200">Staff Review Needed</span>}
+                    {(row.name || '').startsWith('[Admin Approval Pending]') && currentUser?.role === 'admin' && (
+                      <button
+                        onClick={() => handleClearAdminPending(row.id, manageTable).catch(err => setManageError(err.message))}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200 cursor-pointer"
+                      >
+                        Approve & Clear Tag
+                      </button>
+                    )}
+                    {(row.name || '').startsWith('[Admin Approval Pending]') && currentUser?.role !== 'admin' && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-200">Admin Approval Pending</span>
+                    )}
                     </div>
                     {slotsInfo && (
                       <div className="text-xs text-slate-500 mt-1">
@@ -2060,8 +2678,8 @@ function App() {
 
           {currentUser ? (
             <>
-              <span className="text-xs text-slate-400 hidden lg:inline mx-1">{currentUser.email}</span>
-              {currentUser.role === 'admin' && (
+              <span className="text-xs text-slate-400 hidden lg:inline mx-1">{currentUser.nickname || currentUser.email}</span>
+              {(currentUser.role === 'admin' || currentUser.role === 'staff') && (
                 <button onClick={() => setView('admin_dashboard')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'admin_dashboard' ? 'bg-indigo-900 text-indigo-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
                   <span className="hidden sm:inline">Dashboard</span>
                   <span className="sm:hidden"><UsersIcon size={14} /></span>
@@ -2091,7 +2709,7 @@ function App() {
       {view === 'clan_slots' && (isDataEmpty ? renderEmptyState() : renderClanSlots())}
       {view === 'battlemodes' && (isDataEmpty ? renderEmptyState() : renderBattlemodes())}
       {view === 'login' && renderLogin()}
-      {view === 'admin_dashboard' && currentUser?.role === 'admin' && renderAdminDashboard()}
+      {view === 'admin_dashboard' && (currentUser?.role === 'admin' || currentUser?.role === 'staff') && renderAdminDashboard()}
       {view === 'admin_data' && (currentUser?.role === 'admin' || currentUser?.role === 'staff') && renderAdminData()}
       {view === 'manage_data' && (currentUser?.role === 'admin' || currentUser?.role === 'staff') && renderManageData()}
 

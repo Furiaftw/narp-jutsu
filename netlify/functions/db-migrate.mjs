@@ -101,6 +101,56 @@ export default async (req) => {
       )
     `;
 
+    // Create pending_entries table for two-step jutsu approval
+    await sql`
+      CREATE TABLE IF NOT EXISTS pending_entries (
+        id SERIAL PRIMARY KEY,
+        table_name TEXT NOT NULL,
+        entry_data TEXT NOT NULL DEFAULT '{}',
+        submitted_by_email TEXT NOT NULL,
+        submitted_by_role TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        admin_approval_pending TEXT DEFAULT '',
+        approved_by_email TEXT DEFAULT '',
+        approved_by_role TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW(),
+        resolved_at TIMESTAMP
+      )
+    `;
+
+    // Add columns if missing for pending_entries
+    await sql`ALTER TABLE pending_entries ADD COLUMN IF NOT EXISTS admin_approval_pending TEXT DEFAULT ''`.catch(() => {});
+
+    // Create users table for Identity user profiles
+    await sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        status TEXT NOT NULL DEFAULT 'pending',
+        nickname TEXT,
+        allowed_factions TEXT DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    // Create pending_faction_access table for faction secrets approval
+    await sql`
+      CREATE TABLE IF NOT EXISTS pending_faction_access (
+        id SERIAL PRIMARY KEY,
+        target_uid TEXT NOT NULL,
+        target_email TEXT NOT NULL,
+        faction TEXT NOT NULL,
+        requested_by_email TEXT NOT NULL,
+        requested_by_role TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        approved_by_email TEXT DEFAULT '',
+        approved_by_role TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW(),
+        resolved_at TIMESTAMP
+      )
+    `;
+
     return new Response(JSON.stringify({ success: true, message: 'All tables created/updated successfully' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

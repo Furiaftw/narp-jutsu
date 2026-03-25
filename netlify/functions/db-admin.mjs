@@ -18,6 +18,8 @@ const TABLE_SCHEMA = {
   clan_slots: ['name', 'available', 'doc_link', 'slots'],
   bloodlines: ['category', 'name', 'doc_link', 'subcategory'],
   factions: ['name'],
+  pending_entries: ['table_name', 'entry_data', 'submitted_by_email', 'submitted_by_role', 'status', 'admin_approval_pending', 'approved_by_email', 'approved_by_role'],
+  pending_faction_access: ['target_uid', 'target_email', 'faction', 'requested_by_email', 'requested_by_role', 'status', 'approved_by_email', 'approved_by_role'],
 };
 
 function sanitizeFields(table, body) {
