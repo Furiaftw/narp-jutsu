@@ -13,10 +13,10 @@ function json(data, status = 200) {
 
 // Allowed tables and their columns (for validation)
 const TABLE_SCHEMA = {
-  jutsus: ['name', 'nature', 'rank', 'cost', 'types', 'origin', 'specialization', 'doc_link', 'bloodline', 'conditions', 'secret_faction'],
-  battlemodes: ['name', 'category', 'bloodline', 'nature', 'doc_link', 'limited', 'available'],
-  clan_slots: ['name', 'available', 'doc_link'],
-  bloodlines: ['category', 'name'],
+  jutsus: ['name', 'nature', 'rank', 'cost', 'types', 'origin', 'specialization', 'doc_link', 'bloodline', 'conditions', 'secret_faction', 'staff_review', 'slots'],
+  battlemodes: ['name', 'category', 'bloodline', 'nature', 'doc_link', 'limited', 'available', 'slots', 'must_learn_ic'],
+  clan_slots: ['name', 'available', 'doc_link', 'slots'],
+  bloodlines: ['category', 'name', 'doc_link', 'subcategory'],
   factions: ['name'],
 };
 

@@ -20,37 +20,44 @@ const SUPER_ADMIN_EMAIL = 'grisales4000@gmail.com';
 
 const RANK_COST_MAP = { E: '1 CU', D: '2 CU', C: '4 CU', B: '6 CU', A: '8 CU', S: '10 CU' };
 
+const SPECIALIZATION_OPTIONS = ['Bukijutsu', 'Fuinjutsu', 'Genjutsu', 'Medical Ninjutsu', 'Ninjutsu', 'Nintaijutsu', 'Taijutsu', 'Kinjutsu'];
+
 const MANAGE_TABLES = {
   jutsus: { label: 'Jutsus', fields: [
-    { key: 'name', label: 'Ability Name', required: true },
-    { key: 'nature', label: 'Nature Type', type: 'select', options: ['', 'Fire', 'Water', 'Earth', 'Wind', 'Lightning', 'Yin', 'Yang', 'Yin-Yang', 'N/A'] },
-    { key: 'rank', label: 'Rank', type: 'select', options: ['', 'E', 'D', 'C', 'B', 'A', 'S'] },
+    { key: 'name', label: 'Jutsu Name', required: true },
+    { key: 'nature', label: 'Nature Type', type: 'multi-select', options: ['Fire', 'Water', 'Earth', 'Wind', 'Lightning', 'Yin', 'Yang', 'N/A'] },
+    { key: 'rank', label: 'Rank', type: 'multi-select', options: ['E', 'D', 'C', 'B', 'A', 'S'] },
     { key: 'cost', label: 'Cost', hidden: true },
-    { key: 'types', label: 'Jutsu Types', type: 'select', options: ['', 'Ninjutsu', 'Taijutsu', 'Genjutsu', 'Bukijutsu', 'Fuinjutsu', 'Kinjutsu', 'Senjutsu', 'Kenjutsu', 'Iryō Ninjutsu'] },
-    { key: 'origin', label: 'Origin', type: 'select', options: ['', 'Canon', 'Custom', 'Clan'] },
-    { key: 'specialization', label: 'Specialization' },
+    { key: 'types', label: 'Jutsu Types', type: 'multi-select', options: ['1 Post', 'Continuous', 'Multi-Post'] },
+    { key: 'origin', label: 'Origin', type: 'select', options: ['', 'Canon', 'Custom'] },
+    { key: 'conditions', label: 'Conditions', type: 'multi-select', options: ['Must Learn IC', 'Limited'], optional: true },
+    { key: 'specialization', label: 'Specialization', type: 'multi-select-editable', options: SPECIALIZATION_OPTIONS },
     { key: 'doc_link', label: 'Doc Link' },
-    { key: 'bloodline', label: 'Bloodline' },
-    { key: 'conditions', label: 'Conditions' },
-    { key: 'secret_faction', label: 'Secret Faction' },
+    { key: 'bloodline', label: 'Bloodline', type: 'bloodline-select', optional: true },
+    { key: 'secret_faction', label: 'Secret Faction', type: 'faction-select', optional: true },
+    { key: 'staff_review', label: 'Staff Review Needed', type: 'checkbox' },
+    { key: 'slots', label: 'Slots', type: 'slots', hidden_unless_includes: { field: 'conditions', value: 'Limited' } },
   ]},
   battlemodes: { label: 'Battlemodes', fields: [
     { key: 'name', label: 'Name', required: true },
-    { key: 'category', label: 'Category', type: 'select', options: ['', 'Primary', 'Secondary', 'Tertiary'] },
-    { key: 'bloodline', label: 'Bloodline/Hidden' },
-    { key: 'nature', label: 'Nature(s)', type: 'select', options: ['', 'Fire', 'Water', 'Earth', 'Wind', 'Lightning', 'Yin', 'Yang', 'Yin-Yang', 'N/A'] },
+    { key: 'category', label: 'Category', type: 'multi-select', options: ['Primary', 'Secondary', 'Tertiary'] },
+    { key: 'bloodline', label: 'Bloodline', type: 'bloodline-select', optional: true },
+    { key: 'nature', label: 'Nature(s)', type: 'multi-select', options: ['Fire', 'Water', 'Earth', 'Wind', 'Lightning', 'Yin', 'Yang', 'N/A'] },
     { key: 'doc_link', label: 'Doc Link' },
-    { key: 'limited', label: 'Limited', type: 'select', options: ['', 'Yes', 'No'] },
-    { key: 'available', label: 'Available', type: 'select', options: ['', 'Yes', 'No'] },
+    { key: 'limited', label: 'Limited', type: 'checkbox' },
+    { key: 'slots', label: 'Slots', type: 'slots', hidden_unless: 'limited' },
+    { key: 'must_learn_ic', label: 'Must Learn IC', type: 'checkbox' },
   ]},
-  clan_slots: { label: 'Clan Slots', fields: [
+  clan_slots: { label: 'Limited Specs', fields: [
     { key: 'name', label: 'Name', required: true },
-    { key: 'available', label: 'Available', type: 'select', options: ['', 'Yes', 'No'] },
     { key: 'doc_link', label: 'Doc Link' },
+    { key: 'slots', label: 'Slots', type: 'slots' },
   ]},
   bloodlines: { label: 'Bloodlines', fields: [
-    { key: 'category', label: 'Category', required: true },
+    { key: 'category', label: 'Category', type: 'select', options: ['', 'Canon', 'Custom'], required: true },
+    { key: 'subcategory', label: 'Type', type: 'select', options: ['', 'KKG', 'Clan'], required: true },
     { key: 'name', label: 'Name', required: true },
+    { key: 'doc_link', label: 'Google Doc Link' },
   ]},
   factions: { label: 'Factions', fields: [
     { key: 'name', label: 'Name', required: true },
@@ -92,10 +99,263 @@ const Trash2 = (p) => <Icon {...p} path={<><polyline points="3 6 5 6 21 6" /><pa
 const Save = (p) => <Icon {...p} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></>} />;
 
 // ============================================================
+// CHECKBOX DROPDOWN COMPONENT
+// ============================================================
+function CheckboxDropdown({ label, options, selected, onChange, placeholder, allowAdd, onAddOption, onRemoveOption }) {
+  const [open, setOpen] = useState(false);
+  const [addInput, setAddInput] = useState('');
+  const selectedArr = typeof selected === 'string' ? selected.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(selected) ? selected : []);
+  const dropdownRef = useState(null);
+
+  const toggle = (opt) => {
+    const newArr = selectedArr.includes(opt) ? selectedArr.filter(s => s !== opt) : [...selectedArr, opt];
+    onChange(newArr.join(', '));
+  };
+
+  const handleAdd = () => {
+    const val = addInput.trim();
+    if (val && !options.includes(val)) {
+      if (onAddOption) onAddOption(val);
+      const newArr = [...selectedArr, val];
+      onChange(newArr.join(', '));
+      setAddInput('');
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(!open)} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-left flex items-center justify-between focus:ring-2 focus:ring-indigo-500 outline-none min-h-[42px]">
+        <span className={selectedArr.length > 0 ? 'text-slate-800' : 'text-slate-400'}>
+          {selectedArr.length > 0 ? selectedArr.join(', ') : placeholder || `Select ${label}...`}
+        </span>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {options.map(opt => (
+            <label key={opt} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+              <input type="checkbox" checked={selectedArr.includes(opt)} onChange={() => toggle(opt)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
+              <span>{opt}</span>
+              {allowAdd && onRemoveOption && !SPECIALIZATION_OPTIONS.includes(opt) && (
+                <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemoveOption(opt); }} className="ml-auto text-red-400 hover:text-red-600 text-xs">remove</button>
+              )}
+            </label>
+          ))}
+          {allowAdd && (
+            <div className="border-t border-slate-100 p-2 flex gap-2">
+              <input type="text" value={addInput} onChange={e => setAddInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); }}} placeholder="Add new..." className="flex-1 text-sm border border-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500" />
+              <button type="button" onClick={handleAdd} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold hover:bg-indigo-200">Add</button>
+            </div>
+          )}
+          <div className="border-t border-slate-100 p-1">
+            <button type="button" onClick={() => setOpen(false)} className="w-full text-xs text-slate-500 hover:text-slate-700 py-1 font-semibold">Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Slots editor component for limited items
+function SlotsEditor({ value, onChange }) {
+  const slots = (() => {
+    try { return JSON.parse(value || '[]'); } catch { return []; }
+  })();
+
+  // If no slots exist yet, start with 1 empty slot
+  const slotsArr = slots.length > 0 ? [...slots] : [{ discord_id: '', username: '' }];
+  const filledCount = slotsArr.filter(s => s.discord_id && s.username).length;
+  const totalSlots = slotsArr.length;
+  const remainingSlots = totalSlots - filledCount;
+
+  const updateSlot = (idx, field, val) => {
+    const updated = [...slotsArr];
+    updated[idx] = { ...updated[idx], [field]: val };
+    onChange(JSON.stringify(updated));
+  };
+
+  const setSlotCount = (count) => {
+    const num = Math.max(1, parseInt(count) || 1);
+    const updated = [...slotsArr];
+    while (updated.length < num) updated.push({ discord_id: '', username: '' });
+    while (updated.length > num) updated.pop();
+    onChange(JSON.stringify(updated));
+  };
+
+  const addSlot = () => {
+    const updated = [...slotsArr, { discord_id: '', username: '' }];
+    onChange(JSON.stringify(updated));
+  };
+
+  const removeSlot = (idx) => {
+    if (slotsArr.length <= 1) return;
+    const updated = slotsArr.filter((_, i) => i !== idx);
+    onChange(JSON.stringify(updated));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between mb-1 gap-3">
+        <span className="text-xs font-semibold text-slate-500">{filledCount}/{totalSlots} slots filled — {remainingSlots} remaining</span>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-slate-500">Total Slots:</label>
+          <input type="number" min="1" value={totalSlots} onChange={e => setSlotCount(e.target.value)} className="w-16 text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 text-center" />
+          <button type="button" onClick={addSlot} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold hover:bg-indigo-200">+ Add Slot</button>
+        </div>
+      </div>
+      {slotsArr.map((slot, idx) => (
+        <div key={idx} className="flex gap-2 items-center">
+          <span className="text-xs text-slate-400 w-6 shrink-0">#{idx + 1}</span>
+          <input type="text" value={slot.discord_id || ''} onChange={e => updateSlot(idx, 'discord_id', e.target.value)} placeholder="Discord ID" className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-500" />
+          <input type="text" value={slot.username || ''} onChange={e => updateSlot(idx, 'username', e.target.value)} placeholder="Username" className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-500" />
+          {slotsArr.length > 1 && (
+            <button type="button" onClick={() => removeSlot(idx)} className="text-red-400 hover:text-red-600 text-xs p-1">x</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Bloodline select dropdown with category filters
+function BloodlineSelect({ value, onChange, manageRows, fetchRows }) {
+  const [open, setOpen] = useState(false);
+  const [bloodlines, setBloodlines] = useState([]);
+  const [filterCat, setFilterCat] = useState('All');
+  const [filterSub, setFilterSub] = useState('All');
+  const [loading, setLoading] = useState(false);
+
+  const loadBloodlines = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/db-admin?table=bloodlines');
+      const json = await res.json();
+      setBloodlines(json.rows || []);
+    } catch (e) {
+      setBloodlines([]);
+    }
+    setLoading(false);
+  };
+
+  const handleOpen = () => {
+    if (!open) loadBloodlines();
+    setOpen(!open);
+  };
+
+  const filtered = bloodlines.filter(b => {
+    if (filterCat !== 'All' && b.category !== filterCat) return false;
+    if (filterSub !== 'All' && b.subcategory !== filterSub) return false;
+    return true;
+  });
+
+  const selectedArr = typeof value === 'string' ? value.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={handleOpen} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-left flex items-center justify-between focus:ring-2 focus:ring-indigo-500 outline-none min-h-[42px]">
+        <span className={value ? 'text-slate-800' : 'text-slate-400'}>{value || 'Select Bloodline...'}</span>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-72 overflow-hidden flex flex-col">
+          <div className="p-2 border-b border-slate-100 flex gap-1 flex-wrap">
+            {['All', 'Canon', 'Custom'].map(c => (
+              <button key={c} type="button" onClick={() => setFilterCat(c)} className={`text-xs px-2 py-0.5 rounded font-bold ${filterCat === c ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{c}</button>
+            ))}
+            <span className="text-slate-300 mx-1">|</span>
+            {['All', 'KKG', 'Clan'].map(s => (
+              <button key={s} type="button" onClick={() => setFilterSub(s)} className={`text-xs px-2 py-0.5 rounded font-bold ${filterSub === s ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{s}</button>
+            ))}
+          </div>
+          <div className="overflow-y-auto max-h-48">
+            {loading ? (
+              <div className="p-3 text-xs text-slate-400 text-center">Loading...</div>
+            ) : filtered.length === 0 ? (
+              <div className="p-3 text-xs text-slate-400 text-center">No bloodlines found</div>
+            ) : (
+              filtered.map(b => (
+                <button key={b.id} type="button" onClick={() => { onChange(b.name); setOpen(false); }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center justify-between ${value === b.name ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>
+                  <span>{b.name}</span>
+                  <span className="text-[10px] text-slate-400">{b.category} {b.subcategory || ''}</span>
+                </button>
+              ))
+            )}
+          </div>
+          <div className="border-t border-slate-100 p-1 flex gap-1">
+            <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="flex-1 text-xs text-slate-400 hover:text-slate-600 py-1 font-semibold">Clear</button>
+            <button type="button" onClick={() => setOpen(false)} className="flex-1 text-xs text-slate-500 hover:text-slate-700 py-1 font-semibold">Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Faction multi-select dropdown
+function FactionSelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [factionsList, setFactionsList] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadFactions = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/db-admin?table=factions');
+      const json = await res.json();
+      setFactionsList((json.rows || []).map(r => r.name));
+    } catch (e) {
+      setFactionsList([]);
+    }
+    setLoading(false);
+  };
+
+  const handleOpen = () => {
+    if (!open) loadFactions();
+    setOpen(!open);
+  };
+
+  const selectedArr = typeof value === 'string' ? value.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const toggle = (f) => {
+    const newArr = selectedArr.includes(f) ? selectedArr.filter(s => s !== f) : [...selectedArr, f];
+    onChange(newArr.join(', '));
+  };
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={handleOpen} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-left flex items-center justify-between focus:ring-2 focus:ring-indigo-500 outline-none min-h-[42px]">
+        <span className={selectedArr.length > 0 ? 'text-slate-800' : 'text-slate-400'}>{selectedArr.length > 0 ? selectedArr.join(', ') : 'Select Factions...'}</span>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {loading ? (
+            <div className="p-3 text-xs text-slate-400 text-center">Loading...</div>
+          ) : factionsList.length === 0 ? (
+            <div className="p-3 text-xs text-slate-400 text-center">No factions found</div>
+          ) : (
+            factionsList.map(f => (
+              <label key={f} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+                <input type="checkbox" checked={selectedArr.includes(f)} onChange={() => toggle(f)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
+                <span>{f}</span>
+              </label>
+            ))
+          )}
+          <div className="border-t border-slate-100 p-1">
+            <button type="button" onClick={() => setOpen(false)} className="w-full text-xs text-slate-500 hover:text-slate-700 py-1 font-semibold">Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // STATIC CONSTANTS
 // ============================================================
-const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Sound", "Yang", "Yin"];
-const JUTSU_TYPES = ["1 Post", "Continuous", "Multi-Post", "Hybrid"];
+const NATURES = ["Fire", "Water", "Lightning", "Earth", "Wind", "Yang", "Yin"];
+const JUTSU_TYPES = ["1 Post", "Continuous", "Multi-Post"];
 const RANKS = ["E", "D", "C", "B", "A", "S"];
 const ORIGIN = ["Canon", "Custom"];
 const BATTLEMODE_CATEGORIES = ["Tertiary", "Secondary", "Primary"];
@@ -116,7 +376,6 @@ const getNatureColor = (nature) => {
     "Lightning": "bg-yellow-200 text-yellow-900 border-yellow-300",
     "Earth": "bg-red-900 text-red-100 border-red-800",
     "Wind": "bg-green-100 text-green-800 border-green-200",
-    "Sound": "bg-fuchsia-200 text-fuchsia-900 border-fuchsia-300",
     "Yang": "bg-amber-100 text-amber-900 border-amber-300",
     "Yin": "bg-purple-100 text-purple-900 border-purple-300",
   };
@@ -217,7 +476,8 @@ async function fetchFreshData() {
       isAvailable = true;
     }
     const link = getStr(slot, 'link', 'Link', 'Doc', 'Doc Link', 'DocLink', 'URL');
-    return { name, available: isAvailable, link };
+    const slotsData = getStr(slot, 'Slots', 'slots');
+    return { name, available: isAvailable, link, slots: slotsData };
   }).filter(Boolean);
 
   // Jutsus — try multiple possible key names
@@ -247,6 +507,8 @@ async function fetchFreshData() {
       secret: secretFactions.length > 0,
       secretFactions,
       multiRank: rankArr.length > 1,
+      staffReview: getStr(row, 'Staff Review', 'staff_review', 'StaffReview') === 'Yes',
+      slots: getStr(row, 'Slots', 'slots'),
     };
   });
 
@@ -284,6 +546,8 @@ async function fetchFreshData() {
       link,
       limitedSlots: hasLimitedSlots,
       available: isAvailable,
+      mustLearnIC: getStr(row, 'Must Learn IC', 'must_learn_ic', 'MustLearnIC').toLowerCase() === 'yes',
+      slots: getStr(row, 'Slots', 'slots'),
     };
   }).filter(Boolean);
 
@@ -328,6 +592,7 @@ function App() {
   const [fClanCat, setFClanCat] = useState('Any');
   const [fClanName, setFClanName] = useState('Any');
   const [fLimited, setFLimited] = useState(false);
+  const [fMultiRank, setFMultiRank] = useState(false);
   const [fActiveSecrets, setFActiveSecrets] = useState([]);
 
   const [clanSearch, setClanSearch] = useState('');
@@ -351,6 +616,7 @@ function App() {
   const [formData, setFormData] = useState({});
   const [customCost, setCustomCost] = useState(false);
   const [manageSearch, setManageSearch] = useState('');
+  const [customSpecs, setCustomSpecs] = useState([]);
 
   // Database seed/migrate state
   const [seedStatus, setSeedStatus] = useState(null); // null | 'loading' | 'success' | 'error'
@@ -537,28 +803,29 @@ function App() {
     setDataLoading(false);
   };
 
-  // --- Database seed/migrate (transfer data from Google Sheets to Neon DB) ---
-  const handleSeedDatabase = async () => {
+  // --- Database migration for existing items ---
+  const handleMigrateExisting = async () => {
     if (currentUser?.role !== 'admin') return;
     setSeedStatus('loading');
     setSeedMessage('Running database migration...');
     try {
-      // Step 1: Migrate (create tables)
+      // Step 1: Migrate (create/update tables)
       const migrateRes = await fetch('/api/db-migrate', { method: 'POST' });
       const migrateJson = await migrateRes.json();
       if (!migrateRes.ok) throw new Error(migrateJson.error || 'Migration failed');
 
-      // Step 2: Seed data from Google Sheets
-      setSeedMessage('Seeding data from Google Sheets...');
-      const seedRes = await fetch('/api/db-seed', { method: 'POST' });
-      const seedJson = await seedRes.json();
-      if (!seedRes.ok) throw new Error(seedJson.error || 'Seed failed');
+      setSeedMessage('Updating existing items...');
 
-      const stats = seedJson.stats || {};
+      // Step 2: Migrate existing data to use new field formats
+      const migrateDataRes = await fetch('/api/db-migrate-data', { method: 'POST' });
+      const migrateDataJson = await migrateDataRes.json();
+      if (!migrateDataRes.ok) throw new Error(migrateDataJson.error || 'Data migration failed');
+
+      const stats = migrateDataJson.stats || {};
       setSeedStatus('success');
-      setSeedMessage(`Data transferred! Jutsus: ${stats.jutsus || 0}, Battlemodes: ${stats.battlemodes || 0}, Clan Slots: ${stats.clanSlots || 0}, Bloodlines: ${stats.bloodlines || 0}, Factions: ${stats.factions || 0}`);
+      setSeedMessage(`Migration complete! Updated: ${stats.jutsus || 0} jutsus, ${stats.battlemodes || 0} battlemodes, ${stats.clanSlots || 0} limited specs, ${stats.bloodlines || 0} bloodlines`);
 
-      // Step 3: Refresh frontend data from the new DB
+      // Step 3: Refresh frontend data
       await handleForceRefresh();
     } catch (err) {
       setSeedStatus('error');
@@ -594,7 +861,15 @@ function App() {
 
   const handleStartAdd = () => {
     const empty = {};
-    MANAGE_TABLES[manageTable].fields.forEach(f => { empty[f.key] = ''; });
+    MANAGE_TABLES[manageTable].fields.forEach(f => {
+      if (f.type === 'slots') {
+        empty[f.key] = JSON.stringify([
+          { discord_id: '', username: '' },
+        ]);
+      } else {
+        empty[f.key] = '';
+      }
+    });
     setFormData(empty);
     setEditingRow({});
     setCustomCost(false);
@@ -608,10 +883,18 @@ function App() {
     setFormData(data);
     setEditingRow(row);
     // Detect if existing cost differs from rank-based auto cost
-    if (manageTable === 'jutsus' && data.rank && RANK_COST_MAP[data.rank]) {
-      setCustomCost(data.cost !== '' && data.cost !== RANK_COST_MAP[data.rank]);
+    if (manageTable === 'jutsus') {
+      const ranks = (data.rank || '').split(',').map(r => r.trim()).filter(Boolean);
+      if (ranks.length === 1 && RANK_COST_MAP[ranks[0]]) {
+        setCustomCost(data.cost !== '' && data.cost !== RANK_COST_MAP[ranks[0]]);
+      } else if (ranks.length > 1) {
+        const autoCost = ranks.map(r => RANK_COST_MAP[r]).filter(Boolean).join(' / ');
+        setCustomCost(data.cost !== '' && data.cost !== autoCost);
+      } else {
+        setCustomCost(data.cost !== '' && !data.rank);
+      }
     } else {
-      setCustomCost(manageTable === 'jutsus' && data.cost !== '' && !data.rank);
+      setCustomCost(false);
     }
     setManageSuccess(null);
     setManageError(null);
@@ -632,11 +915,69 @@ function App() {
       const url = isNew
         ? `${ADMIN_API_URL}?table=${manageTable}`
         : `${ADMIN_API_URL}?table=${manageTable}&id=${editingRow.id}`;
-      // Auto-calculate cost from rank for jutsus unless custom cost is enabled
       const payload = { ...formData };
-      if (manageTable === 'jutsus' && !customCost && payload.rank && RANK_COST_MAP[payload.rank]) {
-        payload.cost = RANK_COST_MAP[payload.rank];
+
+      // Auto-calculate cost from rank for jutsus unless custom cost is enabled
+      if (manageTable === 'jutsus' && !customCost) {
+        const ranks = (payload.rank || '').split(',').map(r => r.trim()).filter(Boolean);
+        if (ranks.length === 1 && RANK_COST_MAP[ranks[0]]) {
+          payload.cost = RANK_COST_MAP[ranks[0]];
+        } else if (ranks.length > 1) {
+          // Multi-rank: show range or highest
+          const costs = ranks.map(r => RANK_COST_MAP[r]).filter(Boolean);
+          payload.cost = costs.length > 0 ? costs.join(' / ') : '';
+        }
       }
+
+      // For battlemodes with limited checked, compute available from slots
+      if (manageTable === 'battlemodes' && payload.limited === 'Yes') {
+        try {
+          const slots = JSON.parse(payload.slots || '[]');
+          const filledCount = slots.filter(s => s.discord_id && s.username).length;
+          const totalSlots = slots.length;
+          payload.available = filledCount < totalSlots ? 'Yes' : 'No';
+        } catch { payload.available = 'Yes'; }
+      } else if (manageTable === 'battlemodes' && payload.limited !== 'Yes') {
+        payload.available = 'Yes';
+        payload.slots = '';
+      }
+
+      // For clan_slots (Limited Specs), compute available from slots
+      if (manageTable === 'clan_slots') {
+        try {
+          const slots = JSON.parse(payload.slots || '[]');
+          const filledCount = slots.filter(s => s.discord_id && s.username).length;
+          const totalSlots = slots.length;
+          payload.available = filledCount < totalSlots ? 'Yes' : 'No';
+        } catch { payload.available = 'Yes'; }
+      }
+
+      // Handle category multi-select for battlemodes: auto add [Bundle] tag logic
+      if (manageTable === 'battlemodes') {
+        const cats = (payload.category || '').split(',').map(c => c.trim()).filter(Boolean);
+        if (cats.length > 1 && !cats.includes('Bundle')) {
+          payload.category = [...cats, 'Bundle'].join(', ');
+        }
+      }
+
+      // Staff review checkbox for jutsus
+      if (manageTable === 'jutsus') {
+        payload.staff_review = payload.staff_review === 'Yes' ? 'Yes' : '';
+        // For jutsus with Limited condition, handle slots
+        const conditions = (payload.conditions || '').split(',').map(c => c.trim());
+        if (conditions.includes('Limited')) {
+          // Slots are present, no extra action needed — slots field is already in payload
+        } else {
+          // Clear slots when not limited
+          payload.slots = '';
+        }
+      }
+
+      // Must learn IC checkbox for battlemodes
+      if (manageTable === 'battlemodes') {
+        payload.must_learn_ic = payload.must_learn_ic === 'Yes' ? 'Yes' : '';
+      }
+
       const res = await fetch(url, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -644,7 +985,35 @@ function App() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Save failed');
-      setManageSuccess(isNew ? 'Item added successfully!' : 'Item updated successfully!');
+
+      let successMsg = isNew ? 'Item added successfully!' : 'Item updated successfully!';
+
+      // Auto-insert into Limited Specs when creating a bloodline
+      if (manageTable === 'bloodlines' && isNew && payload.doc_link) {
+        try {
+          const defaultSlots = JSON.stringify([
+            { discord_id: '', username: '' },
+            { discord_id: '', username: '' },
+            { discord_id: '', username: '' },
+            { discord_id: '', username: '' },
+          ]);
+          await fetch(`${ADMIN_API_URL}?table=clan_slots`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: payload.name,
+              doc_link: payload.doc_link,
+              available: 'Yes',
+              slots: defaultSlots,
+            }),
+          });
+          successMsg += ' Also added to Limited Specs with 4 default slots.';
+        } catch (e) {
+          successMsg += ' (Warning: Failed to auto-add to Limited Specs)';
+        }
+      }
+
+      setManageSuccess(successMsg);
       setEditingRow(null);
       setFormData({});
       await fetchManageRows(manageTable);
@@ -700,9 +1069,10 @@ function App() {
       let matchClan = true;
       if (fClanCat !== 'Any') matchClan = j.clanCat === fClanCat && (fClanName === 'Any' || j.clanName === fClanName);
       const matchLimited = fLimited ? j.limited === true : true;
-      return matchSearch && matchNature && matchOrigin && matchSpec && matchType && matchRank && matchClan && matchLimited;
+      const matchMultiRank = fMultiRank ? j.multiRank === true : true;
+      return matchSearch && matchNature && matchOrigin && matchSpec && matchType && matchRank && matchClan && matchLimited && matchMultiRank;
     });
-  }, [jutsus, searchTerm, fNature, fOrigin, fSpec, fType, fRank, fClanCat, fClanName, fLimited, fActiveSecrets]);
+  }, [jutsus, searchTerm, fNature, fOrigin, fSpec, fType, fRank, fClanCat, fClanName, fLimited, fMultiRank, fActiveSecrets]);
 
   if (authLoading || dataLoading) {
     return (
@@ -782,6 +1152,7 @@ function App() {
             <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
               <div className="flex flex-wrap items-center gap-6">
                 <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer"><input type="checkbox" checked={fLimited} onChange={e => setFLimited(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" /> Limited Only</label>
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer"><input type="checkbox" checked={fMultiRank} onChange={e => setFMultiRank(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" /> Multi-Rank Only</label>
                 {visibleFactions.length > 0 && (
                   <>
                     <div className="w-px h-5 bg-slate-300 hidden md:block"></div>
@@ -828,7 +1199,16 @@ function App() {
                     {j.nature && <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getNatureColor(j.nature)}`}>{j.nature}</span>}
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${j.origin === 'Canon' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-cyan-50 text-cyan-700 border-cyan-200'}`}>{j.origin}</span>
                     {j.limited && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-100 text-rose-800 border-rose-200 flex items-center gap-1"><AlertCircle size={10} /> Limited</span>}
+                    {j.limited && j.slots && (() => {
+                      try {
+                        const slots = JSON.parse(j.slots);
+                        const filled = slots.filter(s => s.discord_id && s.username).length;
+                        const remaining = slots.length - filled;
+                        return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 ${remaining > 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 border border-red-200'}`}>{remaining > 0 ? `${remaining} slot${remaining !== 1 ? 's' : ''} open` : 'Full'}</span>;
+                      } catch { return null; }
+                    })()}
                     {j.secret && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border-purple-200">SECRET</span>}
+                    {j.staffReview && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-800 border-red-200">Staff Review Needed</span>}
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-4">
                     {specArr.map(s => <span key={s} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">{s}</span>)}
@@ -880,8 +1260,8 @@ function App() {
             <div className="flex items-center gap-3 mb-4">
               <UserCheck size={28} className="text-indigo-400" />
               <div>
-                <h2 className="text-2xl font-bold">Clan & Limited Item Availability</h2>
-                <p className="text-sm text-slate-400 mt-0.5">Check which clans and limited items have open slots.</p>
+                <h2 className="text-2xl font-bold">Limited Specs & Availability</h2>
+                <p className="text-sm text-slate-400 mt-0.5">Check which limited specs and items have open slots.</p>
               </div>
             </div>
             <div className="flex gap-4 mb-4">
@@ -909,15 +1289,25 @@ function App() {
           )}
 
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredClans.map((clan, idx) => (
-              <div key={`${clan.name}-${idx}`} className={`rounded-xl border p-4 flex items-center justify-between transition-shadow hover:shadow-md ${clan.available ? 'bg-white border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-                <div className="flex items-center gap-2 min-w-0">
-                  {clan.link ? (
-                    <a href={clan.link} target="_blank" rel="noopener noreferrer" className={`font-bold text-sm underline decoration-1 underline-offset-2 transition-colors ${clan.available ? 'text-indigo-700 hover:text-indigo-900' : 'text-slate-400 hover:text-slate-600'}`}>{clan.name}</a>
-                  ) : (
-                    <span className={`font-bold text-sm ${clan.available ? 'text-slate-800' : 'text-slate-400'}`}>{clan.name}</span>
-                  )}
-                </div>
+            {filteredClans.map((clan, idx) => {
+              let slotsInfo = null;
+              if (clan.slots) {
+                try {
+                  const slots = JSON.parse(clan.slots);
+                  const filled = slots.filter(s => s.discord_id && s.username).length;
+                  slotsInfo = { filled, total: slots.length, remaining: slots.length - filled };
+                } catch {}
+              }
+              return (
+              <div key={`${clan.name}-${idx}`} className={`rounded-xl border p-4 transition-shadow hover:shadow-md ${clan.available ? 'bg-white border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {clan.link ? (
+                      <a href={clan.link} target="_blank" rel="noopener noreferrer" className={`font-bold text-sm underline decoration-1 underline-offset-2 transition-colors ${clan.available ? 'text-indigo-700 hover:text-indigo-900' : 'text-slate-400 hover:text-slate-600'}`}>{clan.name}</a>
+                    ) : (
+                      <span className={`font-bold text-sm ${clan.available ? 'text-slate-800' : 'text-slate-400'}`}>{clan.name}</span>
+                    )}
+                  </div>
                 {clan.available ? (
                   <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-3 py-1 rounded-full">
                     <CheckCircle size={14} /> Open
@@ -927,8 +1317,17 @@ function App() {
                     <XCircle size={14} /> Closed
                   </span>
                 )}
+                </div>
+                {slotsInfo && (
+                  <div className="text-xs text-slate-500 mt-1">
+                    <span className={`font-bold ${slotsInfo.remaining > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {slotsInfo.remaining > 0 ? `${slotsInfo.remaining} of ${slotsInfo.total} slots open` : 'All slots filled'}
+                    </span>
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {filteredClans.length === 0 && (
@@ -998,7 +1397,9 @@ function App() {
                     <h2 className="text-lg font-bold leading-tight">{bm.name}</h2>
                   </div>
                   <div className="flex flex-wrap gap-2 mb-3">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getBattlemodeColor(bm.category)}`}>{bm.category}</span>
+                    {bm.category && bm.category.split(',').map(c => c.trim()).filter(Boolean).map(c => (
+                      <span key={c} className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getBattlemodeColor(c)}`}>{c}</span>
+                    ))}
                     {bm.nature && bm.nature.split(',').map(n => n.trim()).filter(Boolean).map(n => (
                       <span key={n} className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getNatureColor(n)}`}>{n}</span>
                     ))}
@@ -1011,9 +1412,18 @@ function App() {
                         {bm.available ? 'Available' : 'Unavailable'}
                       </span>
                     )}
+                    {bm.mustLearnIC && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-700 text-white border border-slate-800">Must Learn IC</span>}
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     {bm.clan && <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200 flex items-center gap-1"><TagIcon size={12} /> {bm.clan}</span>}
+                    {bm.limitedSlots && bm.slots && (() => {
+                      try {
+                        const slots = JSON.parse(bm.slots);
+                        const filled = slots.filter(s => s.discord_id && s.username).length;
+                        const remaining = slots.length - filled;
+                        return <span className={`text-xs font-bold px-2 py-1 rounded border ${remaining > 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'}`}>{remaining > 0 ? `${remaining} slot${remaining !== 1 ? 's' : ''} open` : 'Full'}</span>;
+                      } catch { return null; }
+                    })()}
                   </div>
                 </div>
                 <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2 mt-auto">
@@ -1032,7 +1442,7 @@ function App() {
             <div className="text-center py-16">
               <AlertCircle size={40} className="text-amber-400 mx-auto mb-3" />
               <p className="text-slate-600 font-semibold mb-2">No battlemode data available.</p>
-              <p className="text-slate-400 text-sm max-w-md mx-auto">The Google Apps Script API is not returning battlemode data. Make sure the Apps Script includes a <code className="bg-slate-200 px-1 rounded">"battlemodes"</code> array in its JSON response.</p>
+              <p className="text-slate-400 text-sm max-w-md mx-auto">No battlemodes found in the database. An admin needs to add battlemodes via the Manage tab.</p>
             </div>
           )}
           {filteredBattlemodes.length === 0 && battlemodes.length > 0 && (
@@ -1087,31 +1497,31 @@ function App() {
             <div><h2 className="text-2xl font-bold">Admin Dashboard</h2><p className="text-sm text-emerald-100 mt-1">Manage user accounts and faction access.</p></div>
           </div>
 
-          {/* Database Transfer Section */}
+          {/* Database Management Section */}
           <div className="mb-8 bg-white border border-slate-200 shadow-sm rounded-2xl p-5">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-cyan-100 p-2 rounded-full text-cyan-600"><Database size={20} /></div>
               <div>
-                <h3 className="font-bold text-slate-800">Transfer Database Data</h3>
-                <p className="text-xs text-slate-500">Import data from Google Sheets into the Neon database. This will create tables if needed and seed all data.</p>
+                <h3 className="font-bold text-slate-800">Database Management</h3>
+                <p className="text-xs text-slate-500">Manage the Neon database and refresh frontend data.</p>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
               <button
-                onClick={handleSeedDatabase}
-                disabled={seedStatus === 'loading'}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${seedStatus === 'loading' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
-              >
-                <RefreshCw size={16} className={seedStatus === 'loading' ? 'animate-spin' : ''} />
-                {seedStatus === 'loading' ? 'Transferring...' : 'Transfer Data from Google Sheets'}
-              </button>
-              <button
                 onClick={handleForceRefresh}
                 disabled={dataLoading}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
               >
                 <RefreshCw size={16} className={dataLoading ? 'animate-spin' : ''} />
                 Refresh Frontend Data
+              </button>
+              <button
+                onClick={handleMigrateExisting}
+                disabled={seedStatus === 'loading'}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors ${seedStatus === 'loading' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}
+              >
+                <RefreshCw size={16} className={seedStatus === 'loading' ? 'animate-spin' : ''} />
+                {seedStatus === 'loading' ? 'Migrating...' : 'Migrate Existing Data'}
               </button>
             </div>
             {seedMessage && (
@@ -1271,7 +1681,7 @@ function App() {
             <Database size={32} className="text-cyan-400" />
             <div>
               <h2 className="text-2xl font-bold">API Data Inspector</h2>
-              <p className="text-sm text-slate-300 mt-1">Raw data extracted from the Google Apps Script API.</p>
+              <p className="text-sm text-slate-300 mt-1">Raw data from the Neon database API.</p>
             </div>
           </div>
 
@@ -1375,10 +1785,19 @@ function App() {
                 {editingRow.id ? <><Edit2 size={18} /> Edit {tableConfig.label.slice(0, -1)}</> : <><PlusCircle size={18} /> Add New {tableConfig.label.slice(0, -1)}</>}
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {tableConfig.fields.filter(f => !f.hidden).map(field => (
-                  <div key={field.key}>
+                {tableConfig.fields.filter(f => {
+                  if (f.hidden) return false;
+                  if (f.hidden_unless) return formData[f.hidden_unless] === 'Yes';
+                  if (f.hidden_unless_includes) {
+                    const val = (formData[f.hidden_unless_includes.field] || '').split(',').map(v => v.trim());
+                    return val.includes(f.hidden_unless_includes.value);
+                  }
+                  return true;
+                }).map(field => (
+                  <div key={field.key} className={field.type === 'slots' ? 'md:col-span-2' : ''}>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
                       {field.label} {field.required && <span className="text-red-500">*</span>}
+                      {field.optional && <span className="text-slate-400 normal-case font-normal ml-1">(optional)</span>}
                     </label>
                     {field.type === 'select' ? (
                       <select
@@ -1390,6 +1809,48 @@ function App() {
                           <option key={opt} value={opt}>{opt || `— Select ${field.label} —`}</option>
                         ))}
                       </select>
+                    ) : field.type === 'multi-select' ? (
+                      <CheckboxDropdown
+                        label={field.label}
+                        options={field.options}
+                        selected={formData[field.key] || ''}
+                        onChange={(val) => setFormData({ ...formData, [field.key]: val })}
+                      />
+                    ) : field.type === 'multi-select-editable' ? (
+                      <CheckboxDropdown
+                        label={field.label}
+                        options={[...new Set([...field.options, ...customSpecs])]}
+                        selected={formData[field.key] || ''}
+                        onChange={(val) => setFormData({ ...formData, [field.key]: val })}
+                        allowAdd
+                        onAddOption={(opt) => setCustomSpecs([...customSpecs, opt])}
+                        onRemoveOption={(opt) => setCustomSpecs(customSpecs.filter(s => s !== opt))}
+                      />
+                    ) : field.type === 'bloodline-select' ? (
+                      <BloodlineSelect
+                        value={formData[field.key] || ''}
+                        onChange={(val) => setFormData({ ...formData, [field.key]: val })}
+                      />
+                    ) : field.type === 'faction-select' ? (
+                      <FactionSelect
+                        value={formData[field.key] || ''}
+                        onChange={(val) => setFormData({ ...formData, [field.key]: val })}
+                      />
+                    ) : field.type === 'checkbox' ? (
+                      <label className="flex items-center gap-2 cursor-pointer mt-1">
+                        <input
+                          type="checkbox"
+                          checked={formData[field.key] === 'Yes'}
+                          onChange={(e) => setFormData({ ...formData, [field.key]: e.target.checked ? 'Yes' : '' })}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-5 h-5"
+                        />
+                        <span className="text-sm text-slate-700">{field.label}</span>
+                      </label>
+                    ) : field.type === 'slots' ? (
+                      <SlotsEditor
+                        value={formData[field.key] || '[]'}
+                        onChange={(val) => setFormData({ ...formData, [field.key]: val })}
+                      />
                     ) : (
                       <input
                         type="text"
@@ -1405,7 +1866,12 @@ function App() {
                 {manageTable === 'jutsus' && (
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                      Cost {!customCost && formData.rank && RANK_COST_MAP[formData.rank] && <span className="text-indigo-500 normal-case font-normal">(auto: {RANK_COST_MAP[formData.rank]})</span>}
+                      Cost {!customCost && (() => {
+                        const ranks = (formData.rank || '').split(',').map(r => r.trim()).filter(Boolean);
+                        if (ranks.length === 1 && RANK_COST_MAP[ranks[0]]) return <span className="text-indigo-500 normal-case font-normal">(auto: {RANK_COST_MAP[ranks[0]]})</span>;
+                        if (ranks.length > 1) return <span className="text-indigo-500 normal-case font-normal">(auto: {ranks.map(r => RANK_COST_MAP[r]).filter(Boolean).join(' / ')})</span>;
+                        return null;
+                      })()}
                     </label>
                     <div className="flex items-center gap-3">
                       {customCost ? (
@@ -1418,7 +1884,12 @@ function App() {
                         />
                       ) : (
                         <div className="flex-1 text-sm bg-slate-100 border border-slate-200 rounded-lg p-2.5 text-slate-500">
-                          {formData.rank && RANK_COST_MAP[formData.rank] ? RANK_COST_MAP[formData.rank] : 'Select a rank'}
+                          {(() => {
+                            const ranks = (formData.rank || '').split(',').map(r => r.trim()).filter(Boolean);
+                            if (ranks.length === 1 && RANK_COST_MAP[ranks[0]]) return RANK_COST_MAP[ranks[0]];
+                            if (ranks.length > 1) return ranks.map(r => RANK_COST_MAP[r]).filter(Boolean).join(' / ');
+                            return 'Select a rank';
+                          })()}
                         </div>
                       )}
                       <label className="flex items-center gap-1.5 text-xs text-slate-500 whitespace-nowrap cursor-pointer select-none">
@@ -1427,8 +1898,11 @@ function App() {
                           checked={customCost}
                           onChange={(e) => {
                             setCustomCost(e.target.checked);
-                            if (!e.target.checked && formData.rank && RANK_COST_MAP[formData.rank]) {
-                              setFormData({ ...formData, cost: RANK_COST_MAP[formData.rank] });
+                            if (!e.target.checked) {
+                              const ranks = (formData.rank || '').split(',').map(r => r.trim()).filter(Boolean);
+                              if (ranks.length === 1 && RANK_COST_MAP[ranks[0]]) {
+                                setFormData({ ...formData, cost: RANK_COST_MAP[ranks[0]] });
+                              }
                             }
                           }}
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -1472,7 +1946,7 @@ function App() {
             </div>
           </div>
 
-          {/* Table */}
+          {/* Cards View */}
           {manageLoading && manageRows.length === 0 ? (
             <div className="text-center py-16">
               <div className="w-8 h-8 border-3 border-slate-300 border-t-indigo-500 rounded-full animate-spin mx-auto mb-3"></div>
@@ -1484,42 +1958,67 @@ function App() {
               <p className="text-slate-500 font-semibold">{manageRows.length === 0 ? `No ${tableConfig.label.toLowerCase()} in the database yet.` : 'No results match your search.'}</p>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase w-16">ID</th>
-                      {tableConfig.fields.map(f => (
-                        <th key={f.key} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase whitespace-nowrap">{f.label}</th>
-                      ))}
-                      <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase w-28">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredManageRows.map((row) => (
-                      <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 text-xs text-slate-400 font-mono">{row.id}</td>
-                        {tableConfig.fields.map(f => (
-                          <td key={f.key} className="px-4 py-3 text-slate-700 max-w-[200px] truncate" title={row[f.key] || ''}>
-                            {row[f.key] || <span className="text-slate-300">—</span>}
-                          </td>
-                        ))}
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => handleStartEdit(row)} className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 transition-colors" title="Edit">
-                              <Edit2 size={14} />
-                            </button>
-                            <button onClick={() => handleDeleteRow(row.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Delete">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+              {filteredManageRows.map((row) => {
+                const visibleFields = tableConfig.fields.filter(f => !f.hidden && f.key !== 'name' && f.type !== 'slots');
+                const slotsField = tableConfig.fields.find(f => f.type === 'slots');
+                const hasSlots = slotsField && row[slotsField.key];
+                let slotsInfo = null;
+                if (hasSlots) {
+                  try {
+                    const slots = JSON.parse(row[slotsField.key]);
+                    const filled = slots.filter(s => s.discord_id && s.username).length;
+                    slotsInfo = { filled, total: slots.length, remaining: slots.length - filled };
+                  } catch {}
+                }
+                return (
+                  <div key={row.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-mono">#{row.id}</span>
+                        <h4 className="text-sm font-bold text-slate-800 leading-tight">{row.name || '(untitled)'}</h4>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <button onClick={() => handleStartEdit(row)} className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 transition-colors" title="Edit">
+                          <Edit2 size={14} />
+                        </button>
+                        <button onClick={() => handleDeleteRow(row.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Delete">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {visibleFields.map(f => {
+                        const val = row[f.key];
+                        if (!val) return null;
+                        if (f.type === 'checkbox' && val === 'Yes') {
+                          return <span key={f.key} className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-200">{f.label}</span>;
+                        }
+                        if (f.type === 'checkbox') return null;
+                        // Multi-value fields show as tags
+                        const vals = val.includes(',') ? val.split(',').map(v => v.trim()).filter(Boolean) : [val];
+                        return vals.map(v => (
+                          <span key={`${f.key}-${v}`} className="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-100 text-slate-700 border-slate-200" title={`${f.label}: ${v}`}>
+                            {v}
+                          </span>
+                        ));
+                      })}
+                      {row.staff_review === 'Yes' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-800 border border-red-200">Staff Review Needed</span>}
+                    </div>
+                    {slotsInfo && (
+                      <div className="text-xs text-slate-500 mt-1">
+                        <span className={`font-bold ${slotsInfo.remaining > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {slotsInfo.remaining > 0 ? `${slotsInfo.remaining} slot${slotsInfo.remaining !== 1 ? 's' : ''} open` : 'Full'}
+                        </span>
+                        <span className="text-slate-400 ml-1">({slotsInfo.filled}/{slotsInfo.total})</span>
+                      </div>
+                    )}
+                    {row.doc_link && (
+                      <a href={row.doc_link} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:text-indigo-800 mt-1 inline-flex items-center gap-1"><ExternalLink size={10} /> Doc</a>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1539,10 +2038,10 @@ function App() {
           {view === 'admin_data' && <Database size={18} className="text-cyan-400" />}
           {view === 'manage_data' && <Edit2 size={18} className="text-indigo-400" />}
           <span className="hidden sm:inline">
-            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Clans & Items' : view === 'battlemodes' ? 'Battlemodes' : view === 'login' ? 'Auth Portal' : view === 'admin_data' ? 'API Data' : view === 'manage_data' ? 'Manage Data' : 'Admin Area'}
+            {view === 'browser' ? 'NARP Database' : view === 'clan_slots' ? 'Limited Specs' : view === 'battlemodes' ? 'Battlemodes' : view === 'login' ? 'Auth Portal' : view === 'admin_data' ? 'API Data' : view === 'manage_data' ? 'Manage Data' : 'Admin Area'}
           </span>
           <span className="sm:hidden">
-            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Items' : view === 'battlemodes' ? 'BM' : view === 'login' ? 'Auth' : view === 'admin_data' ? 'Data' : view === 'manage_data' ? 'Manage' : 'Admin'}
+            {view === 'browser' ? 'NARP' : view === 'clan_slots' ? 'Specs' : view === 'battlemodes' ? 'BM' : view === 'login' ? 'Auth' : view === 'admin_data' ? 'Data' : view === 'manage_data' ? 'Manage' : 'Admin'}
           </span>
         </h1>
         <div className="flex items-center gap-2">
@@ -1551,7 +2050,7 @@ function App() {
             <span className="sm:hidden"><BookOpen size={14} /></span>
           </button>
           <button onClick={() => setView('clan_slots')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'clan_slots' ? 'bg-emerald-900 text-emerald-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
-            <span className="hidden sm:inline">Clans & Items</span>
+            <span className="hidden sm:inline">Limited Specs</span>
             <span className="sm:hidden"><UserCheck size={14} /></span>
           </button>
           <button onClick={() => setView('battlemodes')} className={`text-xs px-3 py-1.5 font-bold rounded-lg transition-colors ${view === 'battlemodes' ? 'bg-rose-900 text-rose-200' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>

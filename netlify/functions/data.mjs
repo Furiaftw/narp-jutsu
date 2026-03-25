@@ -64,6 +64,8 @@ export default async (req) => {
       'Bloodline': row.bloodline,
       'Conditions': row.conditions,
       'Secret Faction': row.secret_faction,
+      'Staff Review': row.staff_review || '',
+      'Slots': row.slots || '',
     }));
 
     // Map battlemodes to the format the frontend expects
@@ -75,6 +77,8 @@ export default async (req) => {
       'Doc': row.doc_link,
       'Limited': row.limited,
       'Available': row.available,
+      'Slots': row.slots || '',
+      'Must Learn IC': row.must_learn_ic || '',
     }));
 
     // Map clan_slots to the format the frontend expects
@@ -82,6 +86,16 @@ export default async (req) => {
       'Name': row.name,
       'Available': row.available,
       'Link': row.doc_link,
+      'Slots': row.slots || '',
+    }));
+
+    // Also return bloodline rows with full detail for dropdown usage
+    const bloodlinesList = bloodlineRows.map(row => ({
+      id: row.id,
+      category: row.category,
+      name: row.name,
+      doc_link: row.doc_link || '',
+      subcategory: row.subcategory || '',
     }));
 
     const response = {
@@ -89,6 +103,7 @@ export default async (req) => {
       battlemodes: battlemodesData,
       clanSlots: clanSlotsData,
       bloodlines,
+      bloodlinesList,
       factions,
       _source: 'neon',
       _timestamp: new Date().toISOString(),
