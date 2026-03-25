@@ -1,0 +1,19 @@
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Local env
+.env
+.env.local
+.env.*.local
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

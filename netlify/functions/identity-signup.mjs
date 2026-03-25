@@ -20,11 +20,23 @@ const handler = async (event) => {
     const isSuperAdmin = user.email.toLowerCase() === SUPER_ADMIN_EMAIL;
     const role = isSuperAdmin ? 'admin' : 'user';
     const status = isSuperAdmin ? 'approved' : 'pending';
-    // Create user profile in PostgreSQL
+    // Create user profile in PostgreSQL.
+    // For the super admin, use DO UPDATE so role/status are always correct even if the record
+    // already exists (e.g. a previous email/password account was repaired via identity-request-access).
     await sql`
       INSERT INTO users (id, email, role, status, allowed_factions, created_at)
       VALUES (${user.id}, ${user.email}, ${role}, ${status}, '[]', NOW())
-      ON CONFLICT (id) DO NOTHING
+      ON CONFLICT (id) DO UPDATE
+      SET
+        email = EXCLUDED.email,
+        role = CASE
+          WHEN EXCLUDED.email = ${SUPER_ADMIN_EMAIL} THEN 'admin'
+          ELSE users.role
+        END,
+        status = CASE
+          WHEN EXCLUDED.email = ${SUPER_ADMIN_EMAIL} THEN 'approved'
+          ELSE users.status
+        END
     `;
   } catch (err) {
     console.error('identity-signup: Failed to create user profile:', err);
